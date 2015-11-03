@@ -1,11 +1,12 @@
 module ModelTES
 export transitionwidth, BiasedTES, TESParams, getlinearparams, noise, noiseterms,
-TESRecord, times, rk8, Holmes48nH, IrwinHiltonTES, stochastic
+    TESRecord, times, rk8, Holmes48nH, IrwinHiltonTES, stochastic
 using Roots, ForwardDiff
 include("rk8.jl")
 
 
 abstract AbstractRIT
+
 # following Irwin-Hilton figure 3
 type TESParams{RITType<:AbstractRIT}
     n       ::Float64   # thermal conductance exponent (unitless)
@@ -23,7 +24,6 @@ type TESParams{RITType<:AbstractRIT}
     RIT     ::RITType   # RIT surface
 
 end
-transitionwidth(p::TESParams)=transitionwidth(p.RIT)
 
 
 type ShankRIT <: AbstractRIT
@@ -31,9 +31,12 @@ type ShankRIT <: AbstractRIT
     A::Float64  # current dependence for R(T,I) (A/K^(3/2))
 end
 transitionwidth(RIT::ShankRIT)=RIT.Tw
-"Calculate `Tw` and `A` for a ShankRIT to have the given `alpha` and `beta` paramters
-when biased at resistane `R0`."
-function ShankRIT(alpha, beta, n, Tc, Tb, k, R0, Rn)
+transitionwidth(p::TESParams)=transitionwidth(p.RIT)
+
+
+"Constructor that fixes `Tw` and `A` for a ShankRIT to have the given `alpha` and `beta`
+parameters when biased at resistance `R0`."
+function ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn)
     T0 = Tc /(1 + 3*beta/(2*alpha) - 2*(Rn-R0)/(Rn*alpha)*atanh(2*R0/Rn-1))
     I0 = sqrt(k*(T0^n-Tbath^n)/R0)
     Tw = T0*(Rn-R0)/(Rn*log(2)*alpha)
@@ -47,38 +50,50 @@ type BiasedTES{T}
     T0::Float64 # initial temperature for diff equations (K)
     V ::Float64 # thevinen equivalent voltage V = I0*(p.Rl+p.R0), R0=quiescent resistance
 end
-"Used to find the value of T0 that makes R==targetr (or at least come close)."
-function getR0error(T0,targetr, p::TESParams)
-   I0 = sqrt(p.k*(T0^p.n-p.Tbath^p.n)/targetr)
-   R(I0,T0,p)-targetr
+
+
+"For a given T0, the difference R-targetR. Use to solve numerically for T0."
+function getR0error(T0, targetR, p::TESParams)
+   I0 = sqrt(p.k*(T0^p.n-p.Tbath^p.n)/targetR)
+   R(I0,T0,p)-targetR
 end
-"Find the initial conditions (I0, T0, V) that cause `p` to have resistance `targetr`."
-function initialconditions(p::TESParams, targetr)
-   T00 = fzero((t)->getR0error(t, targetr,p),p.Tc-10*transitionwidth(p), p.Tc+10*transitionwidth(p))
-   I00 = sqrt(p.k*(T00^p.n-p.Tbath^p.n)/targetr)
+
+
+"Find the initial conditions (I0, T0, V) that cause `p` to have resistance `targetR`."
+function initialconditions(p::TESParams, targetR)
+   T00 = fzero((t)->getR0error(t, targetR,p),p.Tc-10*transitionwidth(p), p.Tc+10*transitionwidth(p))
+   I00 = sqrt(p.k*(T00^p.n-p.Tbath^p.n)/targetR)
    R00 = R(I00,T00,p)
    V00 = I00*(p.Rl+R00)
-   # now evolve these conditions through integration to really lock themin
-   out = rk8(1000,1e-5, BiasedTES(p, I00, T00, V00),0)
+   # now evolve these conditions through integration to really lock them in.
+   out = rk8(1000,1e-5, BiasedTES(p, I00, T00, V00), 0)
    T0 = out.T[end]
    I0 = out.I[end]
    R0 = R(I0,T0,p)
    V = I0*(p.Rl+R0)
    I0,T0,V
 end
+
+
 "Created a biased tes with quiescent state resistance R0"
 function BiasedTES{T<:ShankRIT}(p::TESParams{T}, R0::Float64)
-   @assert 0<R0<p.Rn
+   @assert 0 < R0 < p.Rn
    I0, T0, V = initialconditions(p,R0)
    BiasedTES(p,I0,T0,V)
 end
-"Calculate `R0` the quiescent resistance of `bt`."
-getR0(bt::BiasedTES) = R(bt.I0, bt.T0, bt.p)
-"Calculate thermal conductivity from TES heat capacit to Tbath in small signal limit."
-function getG0(bt::BiasedTES)
-   p=bt.p
-   p.k*p.n*bt.T0^(p.n-1)
+
+
+"Calculate `R0` the quiescent resistance of `tes`."
+getR0(tes::BiasedTES) = R(tes.I0, tes.T0, tes.p)
+
+
+"Calculate thermal conductivity from TES heat capacity to Tbath in small signal limit."
+function getG0(tes::BiasedTES)
+   p=tes.p
+   p.k*p.n*tes.T0^(p.n-1)
 end
+
+
 "Calculate paramaters in Irwin-Hilton table 1."
 function getlinearparams(bt::BiasedTES)
    f(x) = R(x[1], x[2], bt.p)
@@ -135,32 +150,103 @@ type IrwinHiltonTES
    lcritminus::Float64
 end
 
-isoverdamped(tes::IrwinHiltonTES) = isreal(tes.tauplus) && isreal(tes.tauminus) && tes.tauplus<tes.tauminus
-isunderdamped(tes::IrwinHiltonTES) = !isoverdamped(tes) && tes.tauplus!=tes.tauminus
-function powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega)
-   a = -1/I0/R0
-   b = L/tauelectrical/R0/loopgain + (1-Rl/R0)
-   c = im*L*tauthermal/R0/loopgain*(1/taucc+1/tauelectrical)
-   d = -tauthermal*L/loopgain/R0
-   -a.*(b.+omega.*c.+omega.^2.*d).^-1
-end
-function noiseterms(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega)
-   xi = 1+2*beta #quadratic approximation
-   F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-   si = abs2(powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega))
-   SItes = 4*kb*T0*I0^2*R0*xi/loopgain^2*(1+omega.^2*tauthermal).*si
-   SIl   = 4*kb*Tl*I0^2*Rl*(loopgain-1)^2/loopgain^2*(1+omega.^2*taucc^2).*si
-   SItfn = 4*kb*T0^2*G0*F*si
-   SItes, SIl, SItfn
-end
-function noise(tes::IrwinHiltonTES, f)
-   omega = 2*pi*f
-   args = Any[getfield(tes, fieldname) for fieldname in fieldnames(tes)]
-   push!(args,omega)
-   SItes, SIl, SItfn = noiseterms(args...)
-   SItes+SIl+SItfn, SItes, SIl, SItfn
+"Constructor for IrwinHiltonTES model"
+function IrwinHiltonTES(tes::BiasedTES)
+    (I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C0, alpha, beta, loopgain,
+        tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus) = getlinearparams(tes)
+    IrwinHiltonTES(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C0, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus)
 end
 
+
+isoverdamped(tes::IrwinHiltonTES) = isreal(tes.tauplus) && isreal(tes.tauminus) && tes.tauplus<tes.tauminus
+isunderdamped(tes::IrwinHiltonTES) = !isoverdamped(tes) && tes.tauplus!=tes.tauminus
+
+
+# function powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega)
+#    a = -1/I0/R0
+#    b = L/tauelectrical/R0/loopgain + (1-Rl/R0)
+#    c = im*L*tauthermal/R0/loopgain*(1/taucc+1/tauelectrical)
+#    d = -tauthermal*L/loopgain/R0
+#    -a.*(b.+omega.*c.+omega.^2.*d).^-1
+# end
+# function noiseterms(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega)
+#    xi = 1+2*beta #quadratic approximation
+#    F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
+#    si = abs2(powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega))
+#    SItes = 4*kb*T0*I0^2*R0*xi/loopgain^2*(1+omega.^2*tauthermal).*si
+#    SIl   = 4*kb*Tl*I0^2*Rl*(loopgain-1)^2/loopgain^2*(1+omega.^2*taucc^2).*si
+#    SItfn = 4*kb*T0^2*G0*F*si
+#    SItes, SIl, SItfn
+# end
+# function noise(tes::IrwinHiltonTES, f)
+#    omega = 2*pi*f
+#    args = Any[getfield(tes, fieldname) for fieldname in fieldnames(tes)]
+#    push!(args,omega)
+#    SItes, SIl, SItfn = noiseterms(args...)
+#    SItes+SIl+SItfn, SItes, SIl, SItfn
+# end
+#
+
+
+"Returns (noise, sigma, theta, phi) where `noise` is a noise power spectral
+density in A^2 per Hz, `sigma` is the rms current (Amps), and `theta` and `phi`
+are the coefficients of the MA(2) and AR(2) polynomials to be used for
+approximating the noise as an ARMA(2,2) process.
+
+You have to input the amplifier current noise, in A^2/Hz, or you can take the
+default value
+"
+function noisePSD(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
+    const kB = 1.38e-23 # Boltzmann
+    const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
+    SP_TFN = 4*kB*tes.T0^2*tes.G0*F
+    SV_TES = 4*kB*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
+    SV_L   = 4*kB*tes.T0*tes.Rl  # Load voltage noise
+    # SI_amp = 5e-22 # Amps^2/Hz
+
+    omega = 2*pi*freq  # Radians / sec
+    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+1im*omega*tes.tauplus).*(1+1im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
+    sIomeg2 = abs2(sIomeg)
+
+    Inoise = sIomeg2*SP_TFN + SI_amp
+    Inoise += SV_TES*tes.I0^2/tes.loopgain^2 * (1+(tes.tauthermal*omega).^2) .* sIomeg2
+    Inoise += SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1+(tes.taucc*omega).^2) .* sIomeg2
+
+    A = SI_amp
+    B = abs2((1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc) /(tes.I0*tes.R0*(2+tes.beta)))
+    C = SP_TFN
+    D = SV_TES*tes.I0^2/tes.loopgain^2
+    E = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2
+
+    a = A * (tes.tauplus*tes.tauminus)^2
+    b = -(A*(tes.tauplus^2+tes.tauminus^2)+B*(D*tes.tauthermal^2+E*tes.taucc^2))
+    c = A+B*(C+D+E)
+    discr = sqrt(b^2-4a*c)
+    u2 = (-b-discr)/(2a)
+    v2 = (-b+discr)/(2a)
+
+    T = 0.5/freq[end] # sampling period, in seconds
+    u,v = sqrt(u2), sqrt(v2)
+    K = sqrt(a)
+    theta = [(T*u*.5+1)*(T*v*0.5+1), T^2*u*v*.5-2, (T*u*.5-1)*(T*v*.5-1)]
+    phi = [(2tes.tauplus/T+1)*(2tes.tauminus/T+1), 2-8tes.tauplus*tes.tauminus/T^2, (1-2tes.tauplus/T)*(1-2tes.tauminus/T)]
+
+    # Rescale so that theta and phi have unit coefficients for the z^0 terms.
+    sigma=theta[1]/phi[1]*4K/(T^2)
+    theta ./= theta[1]
+    phi ./= phi[1]
+
+    omega_digital = 2*pi*freq*T # Proportional to freq, and =pi at the Nyquist frequency
+    z = exp(-1im*omega_digital)
+    Inoise = sigma^2*abs2((1+theta[2]*z+theta[3]*(z .^2)) ./ (1+phi[2]*z+phi[3]*(z .^2)))
+
+    Inoise, 2sigma/sqrt(2pi*T), theta, phi
+end
+
+
+
+# -- Everything below here has something to do with stochastic modeling. So, wouldn't it make sense to
+# -- split it out into separate Julia file?
 
 type TESRecord
     T::Vector{Float64}  # temperature (K)
@@ -185,9 +271,12 @@ function findbiasparams(tes::TESParams{ShankRIT},R0)
     # V = I0*(p.Rl+p.R0)
 end
 
+
 "TES resistance model (Shank et al. 2014)"
 R(I, T, RIT::ShankRIT, Tc, Rn) = Rn/2*(1+tanh((T-Tc+(max(I,0.0)/RIT.A)^(2/3))/(2*log(2)*RIT.Tw)))
 R(I,T, p::TESParams) = R(I,T, p.RIT, p.Tc, p.Rn)
+
+
 "thermal TES equation
 C*dT/dt = I^2*R - k*(T^n-Tbath^n)"
 function dT(I, T, k, n, Tbath, C, R)
@@ -195,11 +284,13 @@ function dT(I, T, k, n, Tbath, C, R)
     Q/C
 end
 
+
 "electrical TES equation
 L*di/dt = (IBias-I)*Rs-I*Rs-I*Rtes"
 function dI(I, T, V, Rl, L, R)
     (V-I*(Rl+R))/L
 end
+
 
 "Modify `dy` to contain "
 function stochasticdy!(dy,y,dt,bt::BiasedTES)
@@ -236,6 +327,7 @@ function stochasticdy!(dy,y,dt,bt::BiasedTES)
    dy[2] = dt*ldidt/p.L
 end
 
+
 "stochastic(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresample::Int=0, nrandomizingsample::Int=6000)
 Integrate a pulse record with with stocastic noise `E` eV with `nsample` total samples, `npresample` presamples, and use
 `nrandomizingsample` samples thrown away to ensure randomized starting `T0` and `I0`. Use `E=0` for noise records."
@@ -259,6 +351,7 @@ function stochastic(nsample::Int, dt::Float64, bt, E::Number, npresample::Int=0,
    end
    TESRecord(reshape(TI[1,:],(nsample,)),reshape(TI[2,:],(nsample,)),dt)
 end
+
 
 "Calling a BiasedTES gives the dI and dT terms for integration."
 function Base.call{S<:Float64}(bt::BiasedTES, t::Float64, y::AbstractVector{S}, dy::AbstractVector{S})
