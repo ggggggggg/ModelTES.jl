@@ -1,7 +1,7 @@
 using ModelTES
 
 """Return a BiasedTES object containing parameters for a HOLMES notional TES"""
-function pholmes(L, RbiasFraction=0.2)
+function pholmes(L=50e-9, RbiasFraction=0.2)
     n = 3.25; Tc = 0.1; Tbath = 0.07
     k = 2.33e-8; C = 0.5e-12
     Rl = 0.3e-3; Rn = 10e-3; Rpara=0.0; R0=Rn*RbiasFraction

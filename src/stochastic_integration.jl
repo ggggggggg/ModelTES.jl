@@ -1,19 +1,7 @@
 # Unvalidated code for attempting a stochastic integration of the differential
 # equations for the TES. Galen's project.
 
-"thermal TES equation
-C*dT/dt = I^2*R - k*(T^n-Tbath^n)"
-function dT(I, T, k, n, Tbath, C, R)
-    Q=-k*(T^n-Tbath^n)+I^2*R
-    Q/C
-end
 
-
-"electrical TES equation
-L*di/dt = (IBias-I)*Rs-I*Rs-I*Rtes"
-function dI(I, T, V, Rl, L, R)
-    (V-I*(Rl+R))/L
-end
 
 
 function stochasticdy!(dy,y,dt,bt::BiasedTES)
@@ -75,16 +63,4 @@ function stochastic(nsample::Int, dt::Float64, bt, E::Number, npresample::Int=0,
       I[i] = y[2]
    end
    TESRecord(T,I,R(I,T,bt.p),dt)
-end
-
-
-"Calling a BiasedTES gives the dI and dT terms for integration in an in place manner."
-function (bt::BiasedTES){S}(t, u::AbstractVector{S}, du::AbstractVector{S})
-    T,I = u[1],u[2]
-    p = bt.p
-    r = R(I,T,p)
-    # dT(I, T, p.k, p.n, p.Tbath, p.C, r)
-    # dI(I,T, bt.V, p.Rl, p.L, r)
-    du[1] = dT(I, T, p.k, p.n, p.Tbath, p.C, r)
-    du[2] = dI(I,T, bt.V, p.Rl, p.L, r)
 end

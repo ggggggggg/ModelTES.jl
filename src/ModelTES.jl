@@ -281,6 +281,34 @@ R(I, T, RIT::ShankRIT, Tc, Rn) = Rn/2*(1+tanh((T-Tc+(max(I,0.0)/RIT.A).^(2/3))/(
 R(I,T, p::TESParams) = R(I,T, p.RIT, p.Tc, p.Rn)
 
 
+"thermal TES equation
+C*dT/dt = I^2*R - k*(T^n-Tbath^n)"
+function dT(I, T, k, n, Tbath, C, R)
+    # if you run into domain errors, try uncommenting the following line
+    # but it probably represents a mistake in your timesteps that should be fixed.
+    #T=max(T,0.0) # avoid domain errors when raising T to a power
+    Q=-k*(T^n-Tbath^n)+I^2*R
+    Q/C
+
+end
+
+
+"electrical TES equation
+L*di/dt = (IBias-I)*Rs-I*Rs-I*Rtes"
+function dI(I, T, V, Rl, L, R)
+    (V-I*(Rl+R))/L
+end
+
+"Calling a BiasedTES gives the dI and dT terms for integration in an in place manner."
+function (bt::BiasedTES){S}(t, u::AbstractVector{S}, du::AbstractVector{S})
+    T,I = u[1],u[2]
+    p = bt.p
+    r = R(I,T,p)
+    # dT(I, T, p.k, p.n, p.Tbath, p.C, r)
+    # dI(I,T, bt.V, p.Rl, p.L, r)
+    du[1] = dT(I, T, p.k, p.n, p.Tbath, p.C, r)
+    du[2] = dI(I,T, bt.V, p.Rl, p.L, r)
+end
 
 
 function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector, npresamples::Int=0)
@@ -347,9 +375,13 @@ function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltim
   # when evaluated it discontinuously changes the temperature (u[1])
   # the last (true,true) argument has to do with which points are saved
   # it doesn't appear to add extra points beyond saveat, so maybe save_timeseries overrides it?
-  cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, integrator->integrator.u[1]+=Esdict[integrator.t]*ModelTES.J_per_eV/bt.p.C, (true,true))
+  function cbfun(integrator)
+    integrator.u[1]+=Esdict[integrator.t]*ModelTES.J_per_eV/bt.p.C
+    integrator.dtpropose=dtsolver # in future use modify_proposed_dt!, see http://docs.juliadiffeq.org/latest/basics/integrator.html#Stepping-Controls-1
+  end
+  cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, cbfun, (true,true))
   # tstops is used to make sure the integrator checks each time in arrivaltimes
-  sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false;callback=cb, tstops=arrivaltimes)
+  sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false,callback=cb, tstops=arrivaltimes)
 
   T = sol[:,1]
   I = sol[:,2]
