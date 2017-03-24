@@ -377,6 +377,7 @@ function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltim
   # it doesn't appear to add extra points beyond saveat, so maybe save_timeseries overrides it?
   function cbfun(integrator)
     integrator.u[1]+=Esdict[integrator.t]*ModelTES.J_per_eV/bt.p.C
+    # modify the integrator timestep back to dtsolver, to take small steps on the rising edge of the pulse
     integrator.dtpropose=dtsolver # in future use modify_proposed_dt!, see http://docs.juliadiffeq.org/latest/basics/integrator.html#Stepping-Controls-1
   end
   cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, cbfun, (true,true))
