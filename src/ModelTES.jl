@@ -346,14 +346,14 @@ end
 function adaptive_solve(bt::BiasedTES, dt::Float64, tspan::Tuple{Float64,Float64}, E::Number, method, abstol, reltol, saveat)
     u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
     prob = ODEProblem(bt, u0, tspan)
-    sol = solve(prob,method,dt=dt,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false)
+    sol = solve(prob,method,dt=dt,abstol=abstol,reltol=reltol, saveat=saveat, save_everystep=false, dense=false)
 end
 "pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)"
 function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)
     u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
     saveat = range(0,dt, nsample-npresamples)
     prob = ODEProblem(bt, u0, (0.0, last(saveat)))
-    sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false)
+    sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_everystep=false, dense=false)
     # npresamples+1 is the point at which initial conditions hold (T differs from T0) (sol[1])
     # npresamples+2 is the first point at which I differs from I0
     T = Vector{Float64}(nsample)
@@ -374,7 +374,7 @@ function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltim
   # this defines a callback that is evaluated when t equals a value in arrival times
   # when evaluated it discontinuously changes the temperature (u[1])
   # the last (true,true) argument has to do with which points are saved
-  # it doesn't appear to add extra points beyond saveat, so maybe save_timeseries overrides it?
+  # it doesn't appear to add extra points beyond saveat, so maybe save_everystep overrides it?
   function cbfun(integrator)
     integrator.u[1]+=Esdict[integrator.t]*ModelTES.J_per_eV/bt.p.C
     # modify the integrator timestep back to dtsolver, to take small steps on the rising edge of the pulse
@@ -382,7 +382,7 @@ function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltim
   end
   cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, cbfun, (true,true))
   # tstops is used to make sure the integrator checks each time in arrivaltimes
-  sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false,callback=cb, tstops=arrivaltimes)
+  sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_everystep=false, dense=false,callback=cb, tstops=arrivaltimes)
 
   T = sol[:,1]
   I = sol[:,2]
