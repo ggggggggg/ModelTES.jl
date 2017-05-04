@@ -300,7 +300,7 @@ function dI(I, T, V, Rl, L, R)
 end
 
 "Calling a BiasedTES gives the dI and dT terms for integration in an in place manner."
-function (bt::BiasedTES){S}(t, u::AbstractVector{S}, du::AbstractVector{S})
+function (bt::BiasedTES)(t, u, du)
     T,I = u[1],u[2]
     p = bt.p
     r = R(I,T,p)
@@ -358,8 +358,8 @@ function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples:
     # npresamples+2 is the first point at which I differs from I0
     T = Vector{Float64}(nsample)
     I = Vector{Float64}(nsample)
-    T[npresamples+1:end] = sol[:,1]
-    I[npresamples+1:end] = sol[:,2]
+    T[npresamples+1:end] = sol[1,:]
+    I[npresamples+1:end] = sol[2,:]
     T[1:npresamples]=bt.T0
     I[1:npresamples]=bt.I0
     Rout = [R(I[i],T[i],bt.p) for i=1:length(T)]
@@ -380,12 +380,12 @@ function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltim
     # modify the integrator timestep back to dtsolver, to take small steps on the rising edge of the pulse
     integrator.dtpropose=dtsolver # in future use modify_proposed_dt!, see http://docs.juliadiffeq.org/latest/basics/integrator.html#Stepping-Controls-1
   end
-  cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, cbfun, (true,true))
+  cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, cbfun)
   # tstops is used to make sure the integrator checks each time in arrivaltimes
   sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_everystep=false, dense=false,callback=cb, tstops=arrivaltimes)
 
-  T = sol[:,1]
-  I = sol[:,2]
+  T = sol[1,:]
+  I = sol[2,:]
   Rout = [R(I[i],T[i],bt.p) for i=1:length(T)]
   TESRecord(T,I, Rout,dt)
 end
