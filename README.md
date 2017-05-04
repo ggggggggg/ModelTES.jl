@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.org/ggggggggg/ModelTES.jl.svg?branch=master)](https://travis-ci.org/ggggggggg/ModelTES.jl)
 
+To install `Pkg.clone("https://github.com/ggggggggg/ModelTES.jl")`
+
 This package is intended to simulate TES microcalorimeter pulses in both the linear and non-linear
 regime. It's not really intended for wide use, but feel free to play with it if you want. There may
 be no support, but can try opening and issue and hope.
