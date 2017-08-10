@@ -19,7 +19,7 @@ include("tes_models.jl")
 const J_per_eV = 1.602177e-19 #unitless
 const kb = 1.38064852e-23 #k boltzmann (J/K)
 
-abstract AbstractRIT
+abstract type AbstractRIT end
 
 # following Irwin-Hilton figure 3
 type TESParams{RITType<:AbstractRIT}
