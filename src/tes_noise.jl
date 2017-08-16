@@ -21,7 +21,7 @@ function noisePSD(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
 
     omega = 2pi*freq  # Radians / sec
     sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+im*omega*tes.tauplus).*(1+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
-    sIomeg2 = abs2(sIomeg)
+    sIomeg2 = abs2.(sIomeg)
 
     Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1+(tes.tauthermal*omega).^2) .* sIomeg2
     Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1+(tes.taucc*omega).^2) .* sIomeg2

@@ -277,7 +277,7 @@ end
 
 
 "TES resistance model (Shank et al. 2014)"
-R(I, T, RIT::ShankRIT, Tc, Rn) = Rn/2*(1+tanh((T-Tc+(max(I,0.0)/RIT.A).^(2/3))/(2*log(2)*RIT.Tw)))
+R(I, T, RIT::ShankRIT, Tc, Rn) = Rn/2*(1+tanh.((T-Tc+(max.(I,0.0)/RIT.A).^(2/3))/(2*log(2)*RIT.Tw)))
 R(I,T, p::TESParams) = R(I,T, p.RIT, p.Tc, p.Rn)
 
 
@@ -323,10 +323,10 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     # Pair of differential equations y' = f(t,y), where y=[T,I]
     p = bt.p
     # Integrate pair of ODEs for all energies EE
-    T = Array(Float64, nsample)
-    I = Array(Float64, nsample)
+    T = Array{Float64}(nsample)
+    I = Array{Float64}(nsample)
     T[1:npresamples], I[1:npresamples] = bt.T0, bt.I0 # set T0, I0 for presamples
-    y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array(Float64, 14)
+    y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array{Float64}(14)
     T[npresamples+1]=y[1]
     I[npresamples+1]=y[2]
     # npresamples+1 is the point at which initial conditions hold (T differs from T0)

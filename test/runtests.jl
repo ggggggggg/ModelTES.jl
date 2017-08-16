@@ -6,8 +6,11 @@ biased_tess = [ModelTES.pholmes(), ModelTES.lowEpix(), ModelTES.highEpix(), Mode
 for bt in biased_tess
   Vs_in = bt.V*collect(0:0.1:10)
   Is, Ts, Rs, Vs_out = ModelTES.iv_curve(bt.p, Vs_in)
-  derivs = [ModelTES.dT_and_dI_iv_point(bt.p, Is[i], Ts[i], Rs[i], Vs_in[i]) for i in eachindex(Vs_in)]
-  @test maximum(map(maximum,abs.(derivs)))<1e-10
+  derivs = zeros(Float64, length(Vs_in), 2)
+  for i in eachindex(Vs_in)
+      derivs[i,:] = ModelTES.dT_and_dI_iv_point(bt.p, Is[i], Ts[i], Rs[i], Vs_in[i])
+  end
+  @test maximum(abs.(derivs))<1e-10
 
   #compare rk8 and DifferentialEquations intergrators
   out = rk8(12000,1e-7, bt, 1000, 2000);
@@ -54,8 +57,8 @@ for bt in biased_tess
   @test times(outmany)==times(outmany2)
   # compare the difference between when the pulses arrive half way between time points, and 1 time point apart
   # the integrated difference should be about a factor of two apart
-  a=sum(abs(outmany.I[2:end-1]-outmany2.I[2:end-1])) # pulses off by half a sample
-  b=sum(abs(outmany.I[2:end]-outmany.I[1:end-1])) # pulses off by one sample
+  a=sum(abs.(outmany.I[2:end-1]-outmany2.I[2:end-1])) # pulses off by half a sample
+  b=sum(abs.(outmany.I[2:end]-outmany.I[1:end-1])) # pulses off by one sample
   @test isapprox(a,b/2,rtol=1e-2,atol=1e-5)
 
   # Compute the noise spectrum etc.
