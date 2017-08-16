@@ -62,8 +62,9 @@ type BiasedTES{T}
     p::TESParams{T}
     I0::Float64 # intial current for diff eq, aka current through TES (A)
     T0::Float64 # initial temperature for diff equations, aka temperature of TES (K)
-    V ::Float64 # thevinen equivalent voltage V = I0*(p.Rl+p.R0), R0=quiescent resistance
-                # also equal to Ibias*Rshunt
+    V ::Float64 # Thévinen equivalent voltage V = I0*(p.Rl+p.R0), R0=quiescent resistance
+                # also equal to Ibias*Rshunt. Careful! This V is a constant and is NOT
+                # the voltage drop across the TES.
 end
 
 
@@ -239,7 +240,7 @@ end
 
 "`Zcircuit(tes::IrwinHiltonTES, f)`
 
-Retyrns impedance of complete circuit of `tes` at frequency `f`."
+Returns impedance of complete circuit of `tes` at frequency `f`."
 function Zcircuit(tes::IrwinHiltonTES, f)
   ω=2π*f
   tes.R0 + im*ω*tes.L + Z(tes,ω)
@@ -294,7 +295,7 @@ end
 
 
 "electrical TES equation
-L*di/dt = (IBias-I)*Rs-I*Rs-I*Rtes"
+L*di/dt = (IBias-I)*Rs+I*Rs-I*Rtes"
 function dI(I, T, V, Rl, L, R)
     (V-I*(Rl+R))/L
 end
