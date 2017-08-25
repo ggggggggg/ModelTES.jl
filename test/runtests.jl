@@ -55,6 +55,8 @@ for bt in biased_tess
   #make the pulses arrive halfway between time points
   outmany2 = ModelTES.pulses(12000,1e-7, bt, [1000,1000,2000,3000,1000,500,2000], 0.5e-7+collect(1:7)*2e-4);
   @test times(outmany)==times(outmany2)
+  @test length(outmany)==length(outmany2)==12000
+  
   # compare the difference between when the pulses arrive half way between time points, and 1 time point apart
   # the integrated difference should be about a factor of two apart
   a=sum(abs.(outmany.I[2:end-1]-outmany2.I[2:end-1])) # pulses off by half a sample
