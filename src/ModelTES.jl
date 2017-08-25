@@ -261,7 +261,7 @@ type TESRecord
     dt::Float64   # seconds between samples (seconds)
 end
 times(r::TESRecord) = range(0,r.dt,length(r.I))
-
+Base.length(r::TESRecord) = length(r.I)
 
 # I want to re-write this code so that
 # A and Tw are the TES params, alpha and beta are derived
