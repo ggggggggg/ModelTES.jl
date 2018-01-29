@@ -301,7 +301,7 @@ function dI(I, T, V, Rl, L, R)
 end
 
 "Calling a BiasedTES gives the dI and dT terms for integration in an in place manner."
-function (bt::BiasedTES)(t, u, du)
+function (bt::BiasedTES)(du,u,p_,t) # use DifferentialEquation 4.0+ API
     T,I = u[1],u[2]
     p = bt.p
     r = R(I,T,p)
@@ -310,7 +310,9 @@ function (bt::BiasedTES)(t, u, du)
     du[1] = dT(I, T, p.k, p.n, p.Tbath, p.C, r)
     du[2] = dI(I,T, bt.V, p.Rl, p.L, r)
 end
-
+function (bt::BiasedTES)(t, u, du) # legacy API for rk8
+    bt(du,u,nothing,t)
+end
 
 function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector, npresamples::Int=0)
     out = Vector{TESRecord}(length(E))

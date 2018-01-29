@@ -1,7 +1,7 @@
-julia 0.6-
+julia 0.6
 ForwardDiff
 Polynomials
 Roots
 PyPlot
 Plots
-DifferentialEquations
+DifferentialEquations 4.0
