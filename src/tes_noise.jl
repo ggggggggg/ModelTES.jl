@@ -11,7 +11,7 @@ thermal fluctuation noise; and amplifier noise.
 
 You can input the amplifier current noise `SI_amp`, in A^2/Hz, or you
 can take the default value."""
-function noisePSD(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
+function noisePSD(tes::IrwinHiltonTES, freq::AbstractVector, SI_amp=5e-22)
     # This term F goes from 0 to one and depends on whether the thermal conductivity is ballistic
     # or diffusive, hardcoded as 1 for now
     const F  = 1
@@ -31,6 +31,9 @@ function noisePSD(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
     Inoise = Inoise_TFN+Inoise_amp+Inoise_TES+Inoise_load
     Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp+zeros(Float64, length(Inoise))
 end
+
+noisePSD(tes::BiasedTES, freq::AbstractVector, SI_amp::Float64=5e-22) =
+    noisePSD(IrwinHiltonTES(tes), freq, SI_amp)
 
 
 """`NoiseModel(tes, sampleTime, [SI_amp])`
