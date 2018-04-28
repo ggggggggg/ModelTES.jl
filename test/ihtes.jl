@@ -24,3 +24,21 @@ z = ModelTES.Z(ihtes,f)
 zcircuit = ModelTES.Zcircuit(ihtes,f)
 
 zr, zi = real.(z), imag.(z)
+
+# Check issue #4: is the normalization correct on PSD and autocorrelation?
+# Estimate the total power by a weird log-space trapezoid rule.
+amplifier_noise=1e-35
+frequencies = collect(logspace(0,6,1501));
+psdRef = ModelTES.noisePSD(bt, frequencies, amplifier_noise)[1];
+totalpower = psdRef[1]*frequencies[1];
+for i=2:length(frequencies)
+    totalpower += (frequencies[i]-frequencies[i-1])*0.5*(psdRef[i]+psdRef[i-1]);
+end
+
+sampleTime = 1e-8
+modelRef = NoiseModel(bt, sampleTime, amplifier_noise)
+for sampleTime in logspace(-7.5,-6,4)
+    model = NoiseModel(bt, sampleTime, amplifier_noise)
+    @test isapprox(model.covarIV[1], modelRef.covarIV[1], rtol=0.01)
+    @test isapprox(model.covarIV[1], totalpower, rtol=0.2)
+end

@@ -73,6 +73,7 @@ function NoiseModel(tes::IrwinHiltonTES, sampleTime::Float64, SI_amp=5e-22)
 
     # Rescale so that phi has unit coefficients for the z^0 term; theta[1] is sigma.
     sigma = theta[1]/phi[1]*4K/(sampleTime^2)
+    sigma /= sqrt(2sampleTime) 
     theta .*= sigma/theta[1]
     phi ./= phi[1]
 
