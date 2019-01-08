@@ -187,6 +187,7 @@ function getlinearparams(bt::BiasedTES)
    invtau = 1/(2*tauelectrical)+1/(2*taucc)
    a = (1/tauelectrical-1/taucc)^2
    b = -4*(R0/p.L)*loopgain*(2+beta)/tauthermal
+   lcritical = -p.L*b/a
    invtaupm = 0.5*sqrt(a+b+0*im) # make it complex, so I can get a complex answer
    tauplus = 1/(invtau+invtaupm)
    tauminus = 1/(invtau-invtaupm)
@@ -195,7 +196,8 @@ function getlinearparams(bt::BiasedTES)
    f = R0*tauthermal/(loopgain-1)^2
    lcritplus = (c+d)*f
    lcritminus = (c-d)*f
-   bt.I0, bt.T0, bt.V, p.Rl, p.Tbath, p.Tbath, p.L, R0, G0, p.C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus
+   bt.I0, bt.T0, bt.V, p.Rl, p.Tbath, p.Tbath, p.L, R0, G0, p.C, alpha, beta, loopgain,
+        tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, lcritical
 end
 
 "Paramters from Irwin-Hilton table one for modeling a linear TES. Defined in Table 1 of Irwin-Hilton chapter."
@@ -221,6 +223,7 @@ type IrwinHiltonTES
    tauminus::Complex{Float64}
    lcritplus::Float64
    lcritminus::Float64
+   Lcritical::Float64
 end
 
 "Constructor for IrwinHiltonTES model"
