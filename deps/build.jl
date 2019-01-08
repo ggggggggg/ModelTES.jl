@@ -16,7 +16,9 @@ function installed(s::String)
 end
 
 if !installed("ARMA")
-  println("insalling ARMA")
+  println("Installing ARMA.jl")
   Pkg.clone("https://github.com/joefowler/ARMA.jl")
-  Pkg.pin("ARMA", v"0.1.1")
+  cd(Pkg.dir("ARMA"))
+  ;git fetch --tags
+  ;git checkout v0.1.1
 end
