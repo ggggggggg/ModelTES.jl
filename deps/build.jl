@@ -18,4 +18,5 @@ end
 if !installed("ARMA")
   println("insalling ARMA")
   Pkg.clone("https://github.com/joefowler/ARMA.jl")
+  Pkg.pin("ARMA", v"0.1.1")
 end
