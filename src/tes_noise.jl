@@ -14,7 +14,7 @@ can take the default value."""
 function noisePSD(tes::IrwinHiltonTES, freq::AbstractVector, SI_amp=5e-22)
     # This term F goes from 0 to one and depends on whether the thermal conductivity is ballistic
     # or diffusive, hardcoded as 1 for now
-    const F  = 1
+    F  = 1
     SP_TFN = 4kb*tes.T0^2*tes.G0*F
     SV_TES = 4kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
     SV_L   = 4kb*tes.T0*tes.Rl  # Load voltage noise
@@ -43,7 +43,7 @@ ARMAModel object from package ARMA.jl"""
 function NoiseModel(tes::IrwinHiltonTES, sampleTime::Float64, SI_amp=5e-22)
     # This term F goes from 0 to one and depends on whether the thermal conductivity is ballistic
     # or diffusive, hardcoded as 1 for now
-    const F  = 1
+    F  = 1
     SP_TFN = 4kb*tes.T0^2*tes.G0*F
     SV_TES = 4kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
     SV_L   = 4kb*tes.T0*tes.Rl  # Load voltage noise
@@ -73,7 +73,7 @@ function NoiseModel(tes::IrwinHiltonTES, sampleTime::Float64, SI_amp=5e-22)
 
     # Rescale so that phi has unit coefficients for the z^0 term; theta[1] is sigma.
     sigma = theta[1]/phi[1]*4K/(sampleTime^2)
-    sigma /= sqrt(2sampleTime) 
+    sigma /= sqrt(2sampleTime)
     theta .*= sigma/theta[1]
     phi ./= phi[1]
 

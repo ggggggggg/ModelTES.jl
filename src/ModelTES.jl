@@ -22,7 +22,7 @@ const kb = 1.38064852e-23 #k boltzmann (J/K)
 abstract type AbstractRIT end
 
 # following Irwin-Hilton figure 3
-type TESParams{RITType<:AbstractRIT}
+mutable struct TESParams{RITType<:AbstractRIT}
     n       ::Float64   # thermal conductance exponent (unitless)
     Tc      ::Float64  # TES critical temperature (K)
     Tbath   ::Float64   # bath temperature (K)
@@ -40,7 +40,7 @@ type TESParams{RITType<:AbstractRIT}
 end
 
 
-type ShankRIT <: AbstractRIT
+mutable struct ShankRIT <: AbstractRIT
     Tw::Float64 # transition width (K)
     A::Float64  # current dependence for R(T,I) (A/K^(3/2))
 end
@@ -58,7 +58,7 @@ function ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn)
 end
 
 
-type BiasedTES{T}
+mutable struct BiasedTES{T}
     p::TESParams{T}
     I0::Float64 # intial current for diff eq, aka current through TES (A)
     T0::Float64 # initial temperature for diff equations, aka temperature of TES (K)
@@ -96,7 +96,7 @@ end
 
 
 "Created a biased tes with quiescent state resistance R0"
-function BiasedTES{T}(p::TESParams{T}, R0::Float64)
+function BiasedTES(p::TESParams{T}, R0::Float64) where T
    @assert 0 < R0 < p.Rn
    I0, T0, V = initialconditions(p,R0)
    BiasedTES(p,I0,T0,V)
@@ -201,7 +201,7 @@ function getlinearparams(bt::BiasedTES)
 end
 
 "Paramters from Irwin-Hilton table one for modeling a linear TES. Defined in Table 1 of Irwin-Hilton chapter."
-type IrwinHiltonTES
+mutable struct IrwinHiltonTES
    I0::Float64
    T0::Float64
    V::Float64
@@ -257,7 +257,7 @@ isoverdamped(tes::IrwinHiltonTES) = (isreal(tes.tauplus) && isreal(tes.tauminus)
 isunderdamped(tes::IrwinHiltonTES) = (!isoverdamped(tes) && tes.tauplus!=tes.tauminus)
 
 
-type TESRecord
+mutable struct TESRecord
     T::Vector{Float64}  # temperature (K)
     I::Vector{Float64}  # current (A)
     R::Vector{Float64}  # TES resistance (Ohm)
