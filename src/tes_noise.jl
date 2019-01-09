@@ -20,7 +20,7 @@ function noisePSD(tes::IrwinHiltonTES, freq::AbstractVector, SI_amp=5e-22)
     SV_L   = 4kb*tes.T0*tes.Rl  # Load voltage noise
 
     omega = 2pi*freq  # Radians / sec
-    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1.+im*omega*tes.tauplus).*(1.+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
+    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1 .+im*omega*tes.tauplus).*(1 .+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
     sIomeg2 = abs2.(sIomeg)
 
     Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1 .+(tes.tauthermal*omega).^2) .* sIomeg2
