@@ -1,5 +1,5 @@
 using ModelTES, ARMA
-using Base.Test
+using Test
 
 biased_tess = [ModelTES.pholmes(), ModelTES.lowEpix(), ModelTES.highEpix(), ModelTES.LCLSII()]
 
@@ -17,9 +17,9 @@ for bt in biased_tess
   out_pulse = pulse(12000,1e-7, bt, 1000, 2000);
   function worst_relative_error(a,b)
       @assert(all(times(a).==times(b)))
-      eI=maximum(abs.(2*(a.I-b.I)./(a.I+b.I)))
-      eT=maximum(abs.(2*(a.T-b.T)./(a.T+b.T)))
-      eR=maximum(abs.(2*(a.R-b.R)./(a.R+b.R)))
+      eI=maximum(abs.(2*(a.I-b.I)./(a.I.+b.I)))
+      eT=maximum(abs.(2*(a.T-b.T)./(a.T.+b.T)))
+      eR=maximum(abs.(2*(a.R-b.R)./(a.R.+b.R)))
       max(eI,eT,eR)
   end
   @test worst_relative_error(out,out_pulse)<1e-5
@@ -53,10 +53,10 @@ for bt in biased_tess
   outmany = ModelTES.pulses(12000,1e-7, bt, [1000,1000,2000,3000,1000,500,2000], collect(1:7)*2e-4);
   @test length(times(outmany))==length(outmany.I)
   #make the pulses arrive halfway between time points
-  outmany2 = ModelTES.pulses(12000,1e-7, bt, [1000,1000,2000,3000,1000,500,2000], 0.5e-7+collect(1:7)*2e-4);
+  outmany2 = ModelTES.pulses(12000,1e-7, bt, [1000,1000,2000,3000,1000,500,2000], 0.5e-7 .+ collect(1:7)*2e-4);
   @test times(outmany)==times(outmany2)
   @test length(outmany)==length(outmany2)==12000
-  
+
   # compare the difference between when the pulses arrive half way between time points, and 1 time point apart
   # the integrated difference should be about a factor of two apart
   a=sum(abs.(outmany.I[2:end-1]-outmany2.I[2:end-1])) # pulses off by half a sample
@@ -65,7 +65,7 @@ for bt in biased_tess
 
   # Compute the noise spectrum etc.
   nmodel = NoiseModel(bt, 1e-6)
-  freq = linspace(0, 5e5, 50)
+  freq = range(0, stop=5e5, length=50)
   psd = model_psd(nmodel, freq)
   covar = model_covariance(nmodel, 20)
 

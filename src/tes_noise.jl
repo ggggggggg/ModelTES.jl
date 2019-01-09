@@ -20,16 +20,16 @@ function noisePSD(tes::IrwinHiltonTES, freq::AbstractVector, SI_amp=5e-22)
     SV_L   = 4kb*tes.T0*tes.Rl  # Load voltage noise
 
     omega = 2pi*freq  # Radians / sec
-    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+im*omega*tes.tauplus).*(1+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
+    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1.+im*omega*tes.tauplus).*(1.+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
     sIomeg2 = abs2.(sIomeg)
 
-    Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1+(tes.tauthermal*omega).^2) .* sIomeg2
-    Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1+(tes.taucc*omega).^2) .* sIomeg2
+    Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1 .+(tes.tauthermal*omega).^2) .* sIomeg2
+    Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1 .+(tes.taucc*omega).^2) .* sIomeg2
     Inoise_TFN = SP_TFN*sIomeg2
     Inoise_amp = SI_amp
 
     Inoise = Inoise_TFN+Inoise_amp+Inoise_TES+Inoise_load
-    Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp+zeros(Float64, length(Inoise))
+    Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp .+ zeros(Float64, length(Inoise))
 end
 
 noisePSD(tes::BiasedTES, freq::AbstractVector, SI_amp::Float64=5e-22) =
