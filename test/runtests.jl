@@ -43,8 +43,6 @@ for bt in biased_tess
   @test worst_relative_error(out_ts2,out_pulse_ts2)<1e-5
 
 
-
-
   # Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples from the higher biased version of the same tes
   out2 = pulse(12000,1e-7, bt, 1000, 2000);
 
@@ -70,6 +68,5 @@ for bt in biased_tess
   covar = model_covariance(nmodel, 20)
 
 end
-
 
 include("ihtes.jl")

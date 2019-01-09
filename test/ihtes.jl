@@ -30,9 +30,9 @@ zr, zi = real.(z), imag.(z)
 amplifier_noise=1e-35
 frequencies = collect(10 .^ range(0, stop=6, length=1501));
 psdRef = ModelTES.noisePSD(bt, frequencies, amplifier_noise)[1];
-global totalpower = psdRef[1]*frequencies[1];
+totalpower = psdRef[1]*frequencies[1];
 for i=2:length(frequencies)
-    totalpower += (frequencies[i]-frequencies[i-1])*0.5*(psdRef[i]+psdRef[i-1]);
+    global totalpower += (frequencies[i]-frequencies[i-1])*0.5*(psdRef[i]+psdRef[i-1]);
 end
 
 sampleTimeA = 1e-8

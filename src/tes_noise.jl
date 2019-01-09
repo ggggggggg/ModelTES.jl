@@ -28,7 +28,7 @@ function noisePSD(tes::IrwinHiltonTES, freq::AbstractVector, SI_amp=5e-22)
     Inoise_TFN = SP_TFN*sIomeg2
     Inoise_amp = SI_amp
 
-    Inoise = Inoise_TFN+Inoise_amp+Inoise_TES+Inoise_load
+    Inoise = Inoise_TFN .+ Inoise_amp .+ Inoise_TES .+ Inoise_load
     Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp .+ zeros(Float64, length(Inoise))
 end
 
