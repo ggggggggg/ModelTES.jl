@@ -19,6 +19,6 @@ if !installed("ARMA")
   println("Installing ARMA.jl")
   Pkg.clone("https://github.com/joefowler/ARMA.jl")
   cd(Pkg.dir("ARMA"))
-  ;git fetch --tags
-  ;git checkout v0.1.1
+  run(`git fetch --tags`)
+  run(`git checkout v0.1.1`)
 end
