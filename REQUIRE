@@ -1,9 +1,0 @@
-julia 0.7
-DifferentialEquations 4.0
-ForwardDiff
-HDF5
-Plots
-Polynomials
-PyPlot
-Roots
-Test

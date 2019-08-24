@@ -246,7 +246,7 @@ end
 Returns impedance of complete circuit of `tes` at frequency `f`."
 function Zcircuit(tes::IrwinHiltonTES, f)
   ω=2π*f
-  tes.R0 + im*ω*tes.L + Z(tes,ω)
+  tes.R0 .+ im*ω*tes.L .+ Z(tes,ω)
 end
 
 include("tes_noise.jl")
