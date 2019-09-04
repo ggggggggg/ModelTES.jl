@@ -22,7 +22,7 @@ const kb = 1.38064852e-23 #k boltzmann (J/K)
 abstract type AbstractRIT end
 
 # following Irwin-Hilton figure 3
-type TESParams{RITType<:AbstractRIT}
+mutable struct TESParams{RITType<:AbstractRIT}
     n       ::Float64   # thermal conductance exponent (unitless)
     Tc      ::Float64  # TES critical temperature (K)
     Tbath   ::Float64   # bath temperature (K)
@@ -40,7 +40,7 @@ type TESParams{RITType<:AbstractRIT}
 end
 
 
-type ShankRIT <: AbstractRIT
+mutable struct ShankRIT <: AbstractRIT
     Tw::Float64 # transition width (K)
     A::Float64  # current dependence for R(T,I) (A/K^(3/2))
 end
@@ -58,7 +58,7 @@ function ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn)
 end
 
 
-type BiasedTES{T}
+mutable struct BiasedTES{T}
     p::TESParams{T}
     I0::Float64 # intial current for diff eq, aka current through TES (A)
     T0::Float64 # initial temperature for diff equations, aka temperature of TES (K)
@@ -96,7 +96,7 @@ end
 
 
 "Created a biased tes with quiescent state resistance R0"
-function BiasedTES{T}(p::TESParams{T}, R0::Float64)
+function BiasedTES(p::TESParams{T}, R0::Float64) where T
    @assert 0 < R0 < p.Rn
    I0, T0, V = initialconditions(p,R0)
    BiasedTES(p,I0,T0,V)
@@ -123,10 +123,10 @@ takes a sorted array of V thevinin values `Vs`, calculates ivs points by
 evolving a pulse for 1 second, and taking the last value
 returns Is, Ts, Vs_out, Rs"
 function iv_curve(p::TESParams, Vs)
-    Is=Vector{Float64}(length(Vs))
-    Ts=Vector{Float64}(length(Vs))
-    Rs=Vector{Float64}(length(Vs))
-    Vs_out=Vector{Float64}(length(Vs))
+    Is=Vector{Float64}(undef, length(Vs))
+    Ts=Vector{Float64}(undef, length(Vs))
+    Rs=Vector{Float64}(undef, length(Vs))
+    Vs_out=Vector{Float64}(undef, length(Vs))
     @assert issorted(Vs)
     for i in length(Vs):-1:1
             if Vs[i]==0
@@ -201,7 +201,7 @@ function getlinearparams(bt::BiasedTES)
 end
 
 "Paramters from Irwin-Hilton table one for modeling a linear TES. Defined in Table 1 of Irwin-Hilton chapter."
-type IrwinHiltonTES
+mutable struct IrwinHiltonTES
    I0::Float64
    T0::Float64
    V::Float64
@@ -238,7 +238,7 @@ Returns the impedance of the `tes` at frequency `f`.
 Implements equation 42 of Irwin-Hilton chapter."
 function Z(tes::IrwinHiltonTES, f)
   ω=2π*f
-  tes.R0*(1+tes.beta) +tes.R0*tes.loopgain*(2+tes.beta)./((1-tes.loopgain)*(1+im*ω*tes.taucc))
+  tes.R0*(1+tes.beta) .+ tes.R0*tes.loopgain*(2+tes.beta)./((1-tes.loopgain)*(1 .+im*ω*tes.taucc))
 end
 
 "`Zcircuit(tes::IrwinHiltonTES, f)`
@@ -246,7 +246,7 @@ end
 Returns impedance of complete circuit of `tes` at frequency `f`."
 function Zcircuit(tes::IrwinHiltonTES, f)
   ω=2π*f
-  tes.R0 + im*ω*tes.L + Z(tes,ω)
+  tes.R0 .+ im*ω*tes.L .+ Z(tes,ω)
 end
 
 include("tes_noise.jl")
@@ -257,13 +257,13 @@ isoverdamped(tes::IrwinHiltonTES) = (isreal(tes.tauplus) && isreal(tes.tauminus)
 isunderdamped(tes::IrwinHiltonTES) = (!isoverdamped(tes) && tes.tauplus!=tes.tauminus)
 
 
-type TESRecord
+mutable struct TESRecord
     T::Vector{Float64}  # temperature (K)
     I::Vector{Float64}  # current (A)
     R::Vector{Float64}  # TES resistance (Ohm)
     dt::Float64   # seconds between samples (seconds)
 end
-times(r::TESRecord) = range(0,r.dt,length(r.I))
+times(r::TESRecord) = range(0, step=r.dt, length=length(r.I))
 Base.length(r::TESRecord) = length(r.I)
 
 # I want to re-write this code so that
@@ -329,10 +329,11 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     # Pair of differential equations y' = f(t,y), where y=[T,I]
     p = bt.p
     # Integrate pair of ODEs for all energies EE
-    T = Array{Float64}(nsample)
-    I = Array{Float64}(nsample)
-    T[1:npresamples], I[1:npresamples] = bt.T0, bt.I0 # set T0, I0 for presamples
-    y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array{Float64}(14)
+    T = Array{Float64}(undef, nsample)
+    I = Array{Float64}(undef, nsample)
+    T[1:npresamples] .= bt.T0
+    I[1:npresamples] .= bt.I0 # set T0, I0 for presamples
+    y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array{Float64}(undef, 14)
     T[npresamples+1]=y[1]
     I[npresamples+1]=y[2]
     # npresamples+1 is the point at which initial conditions hold (T differs from T0)
@@ -357,24 +358,24 @@ end
 "pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)"
 function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)
     u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
-    saveat = range(0,dt, nsample-npresamples)
+    saveat = range(0, step=dt, length=nsample-npresamples)
     prob = ODEProblem(bt, u0, (0.0, last(saveat)))
     sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_everystep=false, dense=false)
     # npresamples+1 is the point at which initial conditions hold (T differs from T0) (sol[1])
     # npresamples+2 is the first point at which I differs from I0
-    T = Vector{Float64}(nsample)
-    I = Vector{Float64}(nsample)
+    T = Vector{Float64}(undef, nsample)
+    I = Vector{Float64}(undef, nsample)
     T[npresamples+1:end] = sol[1,:]
     I[npresamples+1:end] = sol[2,:]
-    T[1:npresamples]=bt.T0
-    I[1:npresamples]=bt.I0
+    T[1:npresamples] .= bt.T0
+    I[1:npresamples] .= bt.I0
     Rout = [R(I[i],T[i],bt.p) for i=1:length(T)]
     TESRecord(T,I, Rout,dt)
 end
 
 function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltimes::Vector; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)
   u0 = [bt.T0, bt.I0]
-  saveat = range(0,dt, nsample)
+  saveat = range(0, step=dt, length=nsample)
   prob = ODEProblem(bt, u0, (0.0, last(saveat)))
   Esdict = Dict([(at,E) for (at,E) in zip(arrivaltimes,Es)])
   # this defines a callback that is evaluated when t equals a value in arrival times
