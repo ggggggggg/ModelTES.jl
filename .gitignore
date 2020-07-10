@@ -3,3 +3,6 @@
 *.jl.mem
 
 *.log
+.DS_Store
+
+Manifest.toml

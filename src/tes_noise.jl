@@ -11,26 +11,29 @@ thermal fluctuation noise; and amplifier noise.
 
 You can input the amplifier current noise `SI_amp`, in A^2/Hz, or you
 can take the default value."""
-function noisePSD(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
+function noisePSD(tes::IrwinHiltonTES, freq::AbstractVector, SI_amp=5e-22)
     # This term F goes from 0 to one and depends on whether the thermal conductivity is ballistic
     # or diffusive, hardcoded as 1 for now
-    const F  = 1
+    F  = 1
     SP_TFN = 4kb*tes.T0^2*tes.G0*F
     SV_TES = 4kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
     SV_L   = 4kb*tes.T0*tes.Rl  # Load voltage noise
 
     omega = 2pi*freq  # Radians / sec
-    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+im*omega*tes.tauplus).*(1+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
+    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1 .+im*omega*tes.tauplus).*(1 .+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
     sIomeg2 = abs2.(sIomeg)
 
-    Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1+(tes.tauthermal*omega).^2) .* sIomeg2
-    Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1+(tes.taucc*omega).^2) .* sIomeg2
+    Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1 .+(tes.tauthermal*omega).^2) .* sIomeg2
+    Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1 .+(tes.taucc*omega).^2) .* sIomeg2
     Inoise_TFN = SP_TFN*sIomeg2
     Inoise_amp = SI_amp
 
-    Inoise = Inoise_TFN+Inoise_amp+Inoise_TES+Inoise_load
-    Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp+zeros(Float64, length(Inoise))
+    Inoise = Inoise_TFN .+ Inoise_amp .+ Inoise_TES .+ Inoise_load
+    Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp .+ zeros(Float64, length(Inoise))
 end
+
+noisePSD(tes::BiasedTES, freq::AbstractVector, SI_amp::Float64=5e-22) =
+    noisePSD(IrwinHiltonTES(tes), freq, SI_amp)
 
 
 """`NoiseModel(tes, sampleTime, [SI_amp])`
@@ -40,7 +43,7 @@ ARMAModel object from package ARMA.jl"""
 function NoiseModel(tes::IrwinHiltonTES, sampleTime::Float64, SI_amp=5e-22)
     # This term F goes from 0 to one and depends on whether the thermal conductivity is ballistic
     # or diffusive, hardcoded as 1 for now
-    const F  = 1
+    F  = 1
     SP_TFN = 4kb*tes.T0^2*tes.G0*F
     SV_TES = 4kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
     SV_L   = 4kb*tes.T0*tes.Rl  # Load voltage noise
@@ -70,6 +73,7 @@ function NoiseModel(tes::IrwinHiltonTES, sampleTime::Float64, SI_amp=5e-22)
 
     # Rescale so that phi has unit coefficients for the z^0 term; theta[1] is sigma.
     sigma = theta[1]/phi[1]*4K/(sampleTime^2)
+    sigma /= sqrt(2sampleTime)
     theta .*= sigma/theta[1]
     phi ./= phi[1]
 

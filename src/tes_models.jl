@@ -35,11 +35,22 @@ function highEpix()
 end
 
 """Return a BiasedTES object containin parameters for the Oct 2016 LCLS-II model"""
-function LCLSII(L=52e-9)
+function LCLSII_2016(L=52e-9)
     Tc=0.075; Tbath = 0.055
     Rl = 0.34e-3; Rn = 13.5e-3; Rpara=0.0; R0=0.15*Rn
     n=3.5; G=130e-12; k = G/(n*Tc^(n-1)); C = 0.11e-12
     alpha = 120.0; beta = 1.69
+    model = ModelTES.ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn);
+    tes_param = TESParams(n,Tc,Tbath,k,C,L,Rl,Rpara,Rn,model)
+    bt = BiasedTES(tes_param, R0)
+end
+
+"""Return a BiasedTES object containin parameters for the April 2018 LCLS-II model"""
+function LCLSII(L=67e-9)
+    Tc=0.050; Tbath = 0.030
+    Rl = 0.35e-3; Rn = 13.3e-3; Rpara=0.0; R0=0.20*Rn
+    n=3.25; G=170e-12; k = G/(n*Tc^(n-1)); C = 0.132e-12
+    alpha = 197.0; beta = 1.6
     model = ModelTES.ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn);
     tes_param = TESParams(n,Tc,Tbath,k,C,L,Rl,Rpara,Rn,model)
     bt = BiasedTES(tes_param, R0)
