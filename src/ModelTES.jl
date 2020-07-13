@@ -9,6 +9,7 @@ export
     unitless
 
 using Roots, ForwardDiff, DifferentialEquations, Unitful
+using RecursiveArrayTools: ArrayPartition
 """assert `x` is unitless and return a Number, eg Float64 or Rational{Int}"""
 unitless(x) = uconvert(Unitful.NoUnits, x)
 
@@ -372,22 +373,28 @@ function pulses(nsample::Int, dt, bt::BiasedTES, Es::Vector, arrivaltimes::Vecto
     dtsolver = Float64(unitless(dtsolver/1u"s"))
     saveat = range(0, step=dt, length=nsample)
     prob = ODEProblem(bt, u0, (0.0, last(saveat)))
-    Esdict = Dict([(at,E) for (at,E) in zip(arrivaltimes,Es)])
+    @assert length(Es) == length(arrivaltimes)
+    i = 1 # used in callback
+    n = length(Es)
     # this defines a callback that is evaluated when t equals a value in arrival times
     # when evaluated it discontinuously changes the temperature (u[1])
     # the last (true,true) argument has to do with which points are saved
     function cbfun(integrator)
-        integrator.u[1]+=Esdict[integrator.t]/bt.p.C/1u"K"
+        integrator.u[1]+=unitless(Es[i]/bt.p.C/1u"K")
+        i+=1
         # modify the integrator timestep back to dtsolver, to take small steps on the rising edge of the pulse
-        integrator.dtpropose=dtsolver # in future use modify_proposed_dt!, see http://docs.juliadiffeq.org/latest/basics/integrator.html#Stepping-Controls-1
+        set_proposed_dt!(integrator, dtsolver)
     end
-    cb = DiscreteCallback((u,t,integrator)->(t in arrivaltimes), cbfun; save_positions=(false,false))
+    cb = DiscreteCallback((u,t,integrator)->(t in arrivaltimes), cbfun; save_positions=(false, false))
+    # as of Jul 2020, the DiffEq docs say discontinuously changing u requires using save before and after
+    # for now im ignoring this and hoping `set_proposed_dt!` is sufficient
     # tstops is used to make sure the integrator checks each time in arrivaltimes
     sol = solve(prob, method=method, dt=dtsolver, abstol=abstol, reltol=reltol, saveat=saveat, 
         save_everystep=false, dense=false, callback=cb, tstops=arrivaltimes, adaptive=true)
 
-    T = sol[1,:]*1u"K"
-    I = sol[2,:]*1u"A"
+    v = sol(saveat)
+    T = v[1,:]*1u"K"
+    I = v[2,:]*1u"A"
     Rout = [rit(bt)(I[i],T[i]) for i=1:length(T)]
     TESRecord(T,I, Rout,dt*1u"s")
 end
