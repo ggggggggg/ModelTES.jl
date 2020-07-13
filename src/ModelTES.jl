@@ -16,11 +16,12 @@ unitless(x) = uconvert(Unitful.NoUnits, x)
 abstract type AbstractRIT end
 
 # following Irwin-Hilton figure 3
-mutable struct TESParams{RITType<:AbstractRIT}
+struct TESParams{RITType<:AbstractRIT}
     n       ::Float64   # thermal conductance exponent (unitless)
     Tbath   ::typeof(1.0u"mK")  # bath temperature
 
-    G       ::typeof(1.0u"pW/K")  # thermal conductivity G = n*k*(T^n-1)
+    G       ::typeof(1.0u"pW/K")  # thermal conductivity G = n*K*(Tc^n-1)
+    # T0_G    ::typeof(1.0u"mK")    # reference temperature from which G is defined
     C       ::typeof(1.0u"pJ/K")   # heat capacity of TES
 
     L       ::typeof(1.0u"nH") # inductance of SQUID (H)
@@ -29,9 +30,26 @@ mutable struct TESParams{RITType<:AbstractRIT}
     Rp      ::typeof(1.0u"mΩ")    # Rparastic; Rshunt = Rl-Rparasitic (ohms)
 
     RIT     ::RITType   # RIT surface
+
+    _K       ::Float64  # W/K^n, dont want type instability with n, so we use a Float64
+                        # but we do want to pre-compute this so we can avoid some ^n calculations
+                        # redundant with G, so make sure they are consistent!
 end
 rit(p::TESParams) = p.RIT
-
+"""    _K_from_G(G, Tc, n)
+return `K` as a Float64 in units W/K^n, used to avoid types depending on n
+"""
+function _K_from_G(G, Tc, n)
+    Tc = unitless(Tc/u"K")
+    _K = unitless(G/u"W/K")/(n*Tc^(n-1)) # W/K^n
+end    
+"""    TESParams(n, Tbath, G, C, L, Rl, Rp, RIT)
+Define TESParams, does unit conversion, and calculates _K from G"""
+function TESParams(n, Tbath, G, C, L, Rl, Rp, RIT)
+    Tc = transitiontemperature(RIT)
+    _K = _K_from_G(G, Tc, n)
+    TESParams(n, Tbath |> u"mK", G |> u"pW/K", C |> u"pJ/K", L |> u"nH", Rl |> u"mΩ", Rp |> u"mΩ", RIT, _K)
+end
 struct BiasedTES{RITType}
     p::TESParams{RITType}
     I0::typeof(1.0u"mA") # intial current for diff eq, aka current through TES
@@ -242,7 +260,8 @@ normal_resistance(RIT::ShankRIT) = RIT.Rn
 parameters when biased at resistance `R0`."
 function ShankRIT_from_αβ(alpha, beta, n, Tc, Tbath, G, R0, Rn)
     T0 = Tc /(1 + 3*beta/(2*alpha) - 2*(Rn-R0)/(Rn*alpha)*atanh(2*Float64(R0/Rn)-1))
-    I0 = sqrt(thermalpower(G, n, Tbath, Tc)/R0)
+    _K = _K_from_G(G, Tc, n)
+    I0 = sqrt(thermalpower(_K, n, Tbath, T0)/R0)
     Tw = T0*(Rn-R0)/(Rn*log(2)*alpha)
     A = I0*(2*alpha/(3*T0*beta))^(3/2)
     ShankRIT(Tc,Rn,Tw,A)
@@ -251,12 +270,10 @@ end
 "thermalpower(G, n, Tbath, T)
 Return the thermal flow from a TES at temperature `T` and the bath at temperature `p.Tbath`.
 Do the calculation carefully to avoid type instability from raising `T^n`."
-function thermalpower(G, n, Tbath, T)
-    g = unitless(G/u"W/K")
+function thermalpower(K, n, Tbath, T)
     t = unitless(T/u"K")
     tb = unitless(Tbath/u"K")
-    k = g/n/t^(n-1) # (pW/K^n)
-    power = k*(t^n-tb^n)
+    power = K*(t^n-tb^n)
     return power*1u"W"
 end
 
@@ -268,7 +285,7 @@ function Z(tes::IrwinHiltonTES, f)
   ω=2π*f
   tes.R0*(1+tes.beta) .+ tes.R0*tes.loopgain*(2+tes.beta)./((1-tes.loopgain)*(1 .+im*ω*tes.taucc))
 end
-thermalpower(p::TESParams, T) = thermalpower(p.G, p.n, p.Tbath, T)
+thermalpower(p::TESParams, T) = thermalpower(p._K, p.n, p.Tbath, T)
 
 "`Zcircuit(tes::IrwinHiltonTES, f)`
 
@@ -282,11 +299,11 @@ end
 
 "thermal TES equation
 C*dT/dt = I^2*R - k*(T^n-Tbath^n)"
-function dT(I, T, G, n, Tbath, C, R)
+function dT(I, T, K, n, Tbath, C, R)
     # if you run into domain errors, try uncommenting the following line
     # but it probably represents a mistake in your timesteps that should be fixed.
     # T=max(T,0.0u"K") # avoid domain errors when raising T to a power
-    Q=I^2*R-thermalpower(G,n,Tbath,T)
+    Q=I^2*R-thermalpower(K,n,Tbath,T)
     Q/C
 end
 "electrical TES equation
@@ -302,7 +319,7 @@ function (bt::BiasedTES)(du, u, p_, t) # use DifferentialEquation 4.0+ API
     # @show round(t*1e6), T, I
     p = bt.p
     r = rit(bt)(I,T)
-    du[1] = unitless(dT(I, T, p.G, p.n, p.Tbath, p.C, r)/u"K/s")
+    du[1] = unitless(dT(I, T, p._K, p.n, p.Tbath, p.C, r)/u"K/s")
     du[2] = unitless(dI(I,T, bt.Vt, p.Rl, p.L, r)/u"A/s")
     du
 end
@@ -353,23 +370,13 @@ function pulses(nsample::Int, dt, bt::BiasedTES, Es::Vector, arrivaltimes::Vecto
     dt = Float64(unitless(dt/1u"s"))
     arrivaltimes = Float64.(unitless.(arrivaltimes./1u"s"))
     dtsolver = Float64(unitless(dtsolver/1u"s"))
-    @show u0
-    @show dt
-    @show Es
-    @show arrivaltimes
-    @show dtsolver
-
     saveat = range(0, step=dt, length=nsample)
-    @show saveat
     prob = ODEProblem(bt, u0, (0.0, last(saveat)))
-    @show prob
     Esdict = Dict([(at,E) for (at,E) in zip(arrivaltimes,Es)])
     # this defines a callback that is evaluated when t equals a value in arrival times
     # when evaluated it discontinuously changes the temperature (u[1])
     # the last (true,true) argument has to do with which points are saved
     function cbfun(integrator)
-        println("cbfun called!!")
-        @show integrator
         integrator.u[1]+=Esdict[integrator.t]/bt.p.C/1u"K"
         # modify the integrator timestep back to dtsolver, to take small steps on the rising edge of the pulse
         integrator.dtpropose=dtsolver # in future use modify_proposed_dt!, see http://docs.juliadiffeq.org/latest/basics/integrator.html#Stepping-Controls-1
@@ -377,7 +384,7 @@ function pulses(nsample::Int, dt, bt::BiasedTES, Es::Vector, arrivaltimes::Vecto
     cb = DiscreteCallback((u,t,integrator)->(t in arrivaltimes), cbfun; save_positions=(false,false))
     # tstops is used to make sure the integrator checks each time in arrivaltimes
     sol = solve(prob, method=method, dt=dtsolver, abstol=abstol, reltol=reltol, saveat=saveat, 
-        save_everystep=false, dense=false, callback=cb, tstops=arrivaltimes, adaptive=false)
+        save_everystep=false, dense=false, callback=cb, tstops=arrivaltimes, adaptive=true)
 
     T = sol[1,:]*1u"K"
     I = sol[2,:]*1u"A"
