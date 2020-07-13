@@ -31,7 +31,8 @@ bt1(du, unitless.([bt1.T0/1u"K", bt1.I0/1u"A"]), nothing, nothing)
 @test du ≈ [0,0] atol=1e-12
 
 
-out = pulses(4000, 1u"μs", bt1, [1000u"eV"], [1000u"μs"], dtsolver=1u"μs")
+
+out = pulses(500, 10u"μs", bt1, [1000u"eV"], [1000u"μs"], dtsolver=1u"μs")
 plot(Float64.(unitless.(ModelTES.times(out)/1u"μs")), ModelTES.unitless.(out.T./out.T[1]), label="T/T0")
 plot(Float64.(unitless.(ModelTES.times(out)/1u"μs")), ModelTES.unitless.(out.I./out.I[1]), label="I/I0")
 plot(Float64.(unitless.(ModelTES.times(out)/1u"μs")), ModelTES.unitless.(out.R./out.R[1]), label="R/R0")
@@ -40,6 +41,23 @@ ylabel("T (mK)")
 legend()
 ylim(0.,2.5)
 ;close("all");
+
+
+cr = 1.0
+ci = 1.0
+Ic0 = 200 * bt1.I0
+rit2 = ModelTES.TwoFluidRIT(cr, ci, Rn, Ic0, Tc)
+tes_param2 = TESParams(n,Tbath,G,C,L,Rl,Rpara,rit2)
+bt2 = BiasedTES_from_R0(tes_param2, R0)
+Ts = 90u"mK":.01u"mK":95u"mK"
+R = rit2.(I0, Ts)
+plot(unitless.(Ts./u"mK"), unitless.(R./u"mΩ"))
+R = rit2.(1.3*I0, Ts)
+plot(unitless.(Ts./u"mK"), unitless.(R./u"mΩ"))
+xlabel("T (mk)")
+ylabel("R (mΩ)")
+title("ci=cr=1, I0=Ic0/200 (blue), I0*1.3 for orange, Rn=8.2mΩ")
+
 # using ModelTES, ARMA
 # using Test
 using DifferentialEquations

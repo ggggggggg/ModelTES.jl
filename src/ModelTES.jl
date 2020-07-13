@@ -9,7 +9,6 @@ export
     unitless
 
 using Roots, ForwardDiff, DifferentialEquations, Unitful
-using RecursiveArrayTools: ArrayPartition
 """assert `x` is unitless and return a Number, eg Float64 or Rational{Int}"""
 unitless(x) = uconvert(Unitful.NoUnits, x)
 
@@ -92,12 +91,6 @@ function initialconditions(p::TESParams, targetR)
     I00 = sqrt(thermalpower(p, T00)/targetR) |> u"nA"
     R00 = rit(p)(I00,T00)
     V00 = I00*(p.Rl+R00)
-    @show thermalpower(p, T00)
-    @show R00
-    @show targetR
-    @show T00
-    @show I00
-    @show I00^2*R00 |> u"W"
    # now evolve these conditions through integration to really lock them in.
    # shouldn't hard code step size here
     if false # turn off the diff eq part
@@ -250,8 +243,13 @@ end
 Return resistance as a function of current `I` and temperature `T` using the model `RIT`.
 TES resistance model (Shank et al. 2014)"
 function (RIT::ShankRIT)(I, T)
-    x = unitless.((T-RIT.Tc+(max.(I,0.0u"mA")/RIT.A).^(2/3))/(2*log(2)*RIT.Tw))
-    RIT.Rn/2*(1+tanh.(x))
+    z = cbrt(I/RIT.A)
+    dTc = z*z
+    # unitful and the ^ operator dont play super nice
+    # so use cbrt and squaring by multiplication so do a 2/3 power
+    # dTc = (I/A)^(3/2)
+    x = unitless((T-RIT.Tc+dTc)/(2*log(2)*RIT.Tw))
+    RIT.Rn/2*(1+tanh(x))
 end
 transitionwidth(RIT::ShankRIT) = RIT.Tw
 transitiontemperature(RIT::ShankRIT) = RIT.Tc
@@ -268,9 +266,53 @@ function ShankRIT_from_αβ(alpha, beta, n, Tc, Tbath, G, R0, Rn)
     ShankRIT(Tc,Rn,Tw,A)
 end
 
-"thermalpower(G, n, Tbath, T)
+struct TwoFluidRIT <: AbstractRIT
+    cr::Float64
+    ci::Float64
+    Rn::typeof(1.0u"mΩ")
+    Ic0::typeof(1.0u"mA")
+    Tc::typeof(1.0u"mK")
+end
+function (tf::TwoFluidRIT)(I,T)
+    # @show I
+    # @show T
+    # following Bennet and Ullom 2015
+    t = clamp(unitless(T/tf.Tc), 0.0, 1.0)
+    # @show t
+    Ic = tf.Ic0*(1-t)^(3//2) # eq. 33
+    # @show Ic
+    # per Doug Bennet, the model works for about 3/4 of the transitin with fixed cr, but 
+    # you dont recover the "normal state resistance"=Rn unless cr=1
+    # so in the simplest case... just use cr=1
+    # and we can later implement a model like
+    # t<t1: cr=cr
+    # t>tc: cr=1
+    # t1<=tt<=tc: cr = linearly interpolate
+    # and choose t1 such that cr doesn't change until like 90% of Rn
+    # Doug says cr=0.5, ci=0.5 and Ic0=??? are good starting points for an x-ray pixel
+    # also Morgan 2017 is a good source of parameters, per Figure Ic0~=200*I0
+    if I < Ic # per Doug, there is only resistance if I>Ic
+        return 0u"mΩ"
+    else
+        return tf.cr*tf.Rn*(1-tf.ci*Ic/I) |> u"mΩ" # eq. 36
+    end
+end
+transitiontemperature(tf::TwoFluidRIT) = tf.Tc
+transitionwidth(tf::TwoFluidRIT) = tf.Tc/100 # hack to move forward, what is the right way?
+normal_resistance(tf::TwoFluidRIT) = tf.Rn
+
+function TwoFluidRIT_from_αβ(alpha, beta, R0, T0, I0, Ic0, Rn)
+    _K = _K_from_G(G, Tc, n)
+    cr = Float64(unitless((beta+1)*R0/Rn))
+    b = (3/2)*cr*(Rn/R0)*(Ic0/I0)*(T0/Tc)*sqrt(1-T0/Tc)
+    ci = alpha/b
+    return TwoFluidRIT(cr, ci, Rn, Ic0, Tc)
+end
+
+"""    thermalpower(K, n, Tbath, T)
+`K` is a Float64, representing a number with units `W/K^n`. `Tbath` and `T` should have temperature units.
 Return the thermal flow from a TES at temperature `T` and the bath at temperature `p.Tbath`.
-Do the calculation carefully to avoid type instability from raising `T^n`."
+Do the calculation carefully to avoid type instability from raising `T^n`."""
 function thermalpower(K, n, Tbath, T)
     t = unitless(T/u"K")
     tb = unitless(Tbath/u"K")
