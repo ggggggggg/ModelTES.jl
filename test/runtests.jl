@@ -46,6 +46,7 @@ Ic0 = 200 * bt1.I0
 rit2 = ModelTES.TwoFluidRIT_from_α(alpha, R0, bt1.T0, bt1.I0, Ic0, Rn, Tc)
 tes_param2 = TESParams(n,Tbath,G,C,L,Rl,Rpara,rit2)
 bt2 = BiasedTES_from_R0(tes_param2, R0)
+
 using PyPlot
 Ts = 90u"mK":.01u"mK":95u"mK"
 R = rit2.(I0, Ts)
@@ -56,15 +57,26 @@ xlabel("T (mk)")
 ylabel("R (mΩ)")
 title("cr=1, ci=$(rit2.ci), I0=Ic0/200 (blue), I0*1.3 for orange, Rn=8.2mΩ")
 
-out1 = pulses(500, 10u"μs", bt1, [1000u"eV"], [1000u"μs"], dtsolver=1u"μs")
-out2 = pulses(500, 10u"μs", bt2, [1000u"eV"], [1000u"μs"], dtsolver=1u"μs")
+println("2fluid alpha_beta: ", ModelTES.alpha_beta(bt2))
+println("shank alpha_beta: ", ModelTES.alpha_beta(bt1))
+
+
+es = [500, 1000, 2000, 3000, 4000].*1u"eV"
+tpulse = 4000u"μs" 
+arrivals = range(0u"μs", step=tpulse, length=length(es))
+dt = 5u"μs"
+steps = round(Int, ModelTES.unitless((arrivals[end]+tpulse)/dt)) 
+
+out1 = pulses(steps, dt, bt1, es, arrivals, dtsolver=1u"μs")
+out2 = pulses(steps, dt, bt2, es, arrivals, dtsolver=1u"μs")
 
 figure()
-plot(Float64.(unitless.(ModelTES.times(out1)/1u"μs")), ModelTES.unitless.(out1.I./u"mA"), label="Shank")
-plot(Float64.(unitless.(ModelTES.times(out2)/1u"μs")), ModelTES.unitless.(out2.I./u"mA"), label="2Fluid")
+plot(Float64.(unitless.(ModelTES.times(out1)/1u"μs")), ustrip.(u"mA", out1.I), label="Shank")
+plot(Float64.(unitless.(ModelTES.times(out2)/1u"μs")), ustrip.(u"mA", out2.I), label="2Fluid")
 xlabel("time (μs)")
 ylabel("I (mA)")
 legend()
+title(prod("$e " for e in es))
 ;close("all");
 
 

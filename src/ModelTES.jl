@@ -278,7 +278,7 @@ struct TwoFluidRIT <: AbstractRIT
     Ic0::typeof(1.0u"mA")
     Tc::typeof(1.0u"mK")
 end
-function (tf::TwoFluidRIT)(I,T)
+function (tf::TwoFluidRIT)(I, T)
     # following Bennet and Ullom 2015
     t = clamp(unitless(T/tf.Tc), 0.0, 1.0) # avoid domain error in next line, also avoid exponentiation unitful quantities
     Ic = tf.Ic0*(1-t)^(3//2) # eq. 33
@@ -296,6 +296,24 @@ function TwoFluidRIT_from_α(alpha, R0, T0, I0, Ic0, Rn, Tc)
     b = (3/2)*(Rn/R0)*(Ic0/I0)*(T0/Tc)*sqrt(1-T0/Tc)
     ci = alpha/b
     return TwoFluidRIT(ci, Rn, Ic0, Tc)
+end
+
+function alpha_beta(RIT::AbstractRIT, I, T)
+    # I used ForwardDiff before switching to unitful, and it doesn't play nice with unitful
+    R = RIT(I,T)
+    di = I*1e-6
+    dr_i = RIT(I+di, T)-R
+    drdi = dr_i/di
+    dt = T*1e-6
+    dr_t = RIT(I, T+dt)-R
+    drdt = dr_t/dt
+    alpha = unitless(drdt*T/R)
+    beta = unitless(drdi*I/R)
+    return alpha, beta
+end
+
+function alpha_beta(bt::BiasedTES)
+    alpha_beta(rit(bt), bt.I0, bt.T0)
 end
 
 """    thermalpower(K, n, Tbath, T)
