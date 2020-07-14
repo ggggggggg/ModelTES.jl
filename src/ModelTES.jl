@@ -21,7 +21,6 @@ struct TESParams{RITType<:AbstractRIT}
     Tbath   ::typeof(1.0u"mK")  # bath temperature
 
     G       ::typeof(1.0u"pW/K")  # thermal conductivity G = n*K*(Tc^n-1)
-    # T0_G    ::typeof(1.0u"mK")    # reference temperature from which G is defined
     C       ::typeof(1.0u"pJ/K")   # heat capacity of TES
 
     L       ::typeof(1.0u"nH") # inductance of SQUID (H)
@@ -266,47 +265,37 @@ function ShankRIT_from_αβ(alpha, beta, n, Tc, Tbath, G, R0, Rn)
     ShankRIT(Tc,Rn,Tw,A)
 end
 
+"""
+We follow Bennet and Ullom 2015 equations 33 and 36. 
+We notice that `cr` and `Rn` only ever appear as `cr*Rn`, so we define cr=1 and simply
+do not include cr in the code.
+Morgan 2017 provides some values for the parameters of the model for real devices.
+    eg. ci=0.85, Ic0 ~200*I0
+"""
 struct TwoFluidRIT <: AbstractRIT
-    cr::Float64
     ci::Float64
     Rn::typeof(1.0u"mΩ")
     Ic0::typeof(1.0u"mA")
     Tc::typeof(1.0u"mK")
 end
 function (tf::TwoFluidRIT)(I,T)
-    # @show I
-    # @show T
     # following Bennet and Ullom 2015
-    t = clamp(unitless(T/tf.Tc), 0.0, 1.0)
-    # @show t
+    t = clamp(unitless(T/tf.Tc), 0.0, 1.0) # avoid domain error in next line, also avoid exponentiation unitful quantities
     Ic = tf.Ic0*(1-t)^(3//2) # eq. 33
-    # @show Ic
-    # per Doug Bennet, the model works for about 3/4 of the transitin with fixed cr, but 
-    # you dont recover the "normal state resistance"=Rn unless cr=1
-    # so in the simplest case... just use cr=1
-    # and we can later implement a model like
-    # t<t1: cr=cr
-    # t>tc: cr=1
-    # t1<=tt<=tc: cr = linearly interpolate
-    # and choose t1 such that cr doesn't change until like 90% of Rn
-    # Doug says cr=0.5, ci=0.5 and Ic0=??? are good starting points for an x-ray pixel
-    # also Morgan 2017 is a good source of parameters, per Figure Ic0~=200*I0
-    if I < Ic # per Doug, there is only resistance if I>Ic
-        return 0u"mΩ"
+    if I < tf.ci*Ic # per Doug, there is only resistance if I>ci*Ic
+        return 0u"mΩ" # ensure both branches return the exact same units
     else
-        return tf.cr*tf.Rn*(1-tf.ci*Ic/I) |> u"mΩ" # eq. 36
+        return tf.Rn*(1-tf.ci*Ic/I) |> u"mΩ" # eq. 36
     end
 end
 transitiontemperature(tf::TwoFluidRIT) = tf.Tc
-transitionwidth(tf::TwoFluidRIT) = tf.Tc/100 # hack to move forward, what is the right way?
+transitionwidth(tf::TwoFluidRIT) = tf.Tc/100 # hack to move forward, the correct answer is I0 dependent, maybe define this based on 1 nA?
 normal_resistance(tf::TwoFluidRIT) = tf.Rn
 
-function TwoFluidRIT_from_αβ(alpha, beta, R0, T0, I0, Ic0, Rn)
-    _K = _K_from_G(G, Tc, n)
-    cr = Float64(unitless((beta+1)*R0/Rn))
-    b = (3/2)*cr*(Rn/R0)*(Ic0/I0)*(T0/Tc)*sqrt(1-T0/Tc)
+function TwoFluidRIT_from_α(alpha, R0, T0, I0, Ic0, Rn, Tc)
+    b = (3/2)*(Rn/R0)*(Ic0/I0)*(T0/Tc)*sqrt(1-T0/Tc)
     ci = alpha/b
-    return TwoFluidRIT(cr, ci, Rn, Ic0, Tc)
+    return TwoFluidRIT(ci, Rn, Ic0, Tc)
 end
 
 """    thermalpower(K, n, Tbath, T)
@@ -406,7 +395,7 @@ end
     dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1, reltol=1e-7)
 
 return a record with photons arriving at `arrivaltimes` with energies `Es`"""
-function pulses(nsample::Int, dt, bt::BiasedTES, Es::Vector, arrivaltimes::Vector; 
+function pulses(nsample::Int, dt, bt::BiasedTES, Es, arrivaltimes; 
         dtsolver=100u"ns", method=DifferentialEquations.Rodas4P(), abstol=1, reltol=1e-7)
     # convert to unitless numbers
     u0 = Float64.(unitless.([bt.T0/1u"K", bt.I0/1u"A"])) # these have different units! we want u to be a Vector of a single type
@@ -432,7 +421,7 @@ function pulses(nsample::Int, dt, bt::BiasedTES, Es::Vector, arrivaltimes::Vecto
     # for now im ignoring this and hoping `set_proposed_dt!` is sufficient
     # tstops is used to make sure the integrator checks each time in arrivaltimes
     sol = solve(prob, method=method, dt=dtsolver, abstol=abstol, reltol=reltol, saveat=saveat, 
-        save_everystep=false, dense=false, callback=cb, tstops=arrivaltimes, adaptive=true)
+        save_everystep=false, dense=false, callback=cb, tstops=arrivaltimes, adaptive=false)
 
     v = sol(saveat)
     T = v[1,:]*1u"K"
