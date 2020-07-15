@@ -13,6 +13,11 @@ using Roots, ForwardDiff, DifferentialEquations, Unitful
 unitless(x) = uconvert(Unitful.NoUnits, x)
 
 
+# possible todos
+# 1. remove all unitful specific code from inside the guts to get compatability with ForwardDiff 
+# 2. add a non-unitful version of all structs, and conversion methods
+
+
 abstract type AbstractRIT end
 
 # following Irwin-Hilton figure 3
@@ -414,7 +419,7 @@ end
 
 return a record with photons arriving at `arrivaltimes` with energies `Es`"""
 function pulses(nsample::Int, dt, bt::BiasedTES, Es, arrivaltimes; 
-        dtsolver=100u"ns", method=DifferentialEquations.Rodas4P(), abstol=1, reltol=1e-7)
+        dtsolver=100u"ns", method=DifferentialEquations.Rodas4P(), abstol=1e-12, reltol=1e-3)
     # convert to unitless numbers
     u0 = Float64.(unitless.([bt.T0/1u"K", bt.I0/1u"A"])) # these have different units! we want u to be a Vector of a single type
     dt = Float64(unitless(dt/1u"s"))
@@ -438,14 +443,19 @@ function pulses(nsample::Int, dt, bt::BiasedTES, Es, arrivaltimes;
     # as of Jul 2020, the DiffEq docs say discontinuously changing u requires using save before and after
     # for now im ignoring this and hoping `set_proposed_dt!` is sufficient
     # tstops is used to make sure the integrator checks each time in arrivaltimes
+    # notes on the meaning of tolerances
+    # the error is constrained to be less than abstol + reltol*value
+    # this is different from my intution of min(abstol, reltol*value)
+    # it is better for zero crossings.
+    # so for TES stuff if we want to solve with currents near the nA range
     sol = solve(prob, method=method, dt=dtsolver, abstol=abstol, reltol=reltol, saveat=saveat, 
-        save_everystep=false, dense=false, callback=cb, tstops=arrivaltimes, adaptive=false)
+        save_everystep=false, dense=false, callback=cb, tstops=arrivaltimes, adaptive=true, alg_hints = (:stiff,))
 
     v = sol(saveat)
     T = v[1,:]*1u"K"
     I = v[2,:]*1u"A"
     Rout = [rit(bt)(I[i],T[i]) for i=1:length(T)]
-    TESRecord(T,I, Rout,dt*1u"s")
+    TESRecord(T,I, Rout,dt*1u"s", sol)
 end
 
 struct TESRecord
@@ -453,6 +463,7 @@ struct TESRecord
     I::Vector{typeof(1.0u"mA")}  # current (A)
     R::Vector{typeof(1.0u"mΩ")}  # TES resistance (Ohm)
     dt::typeof(1.0u"s")  # time between samples (seconds)
+    sol
 end
 times(r::TESRecord) = range(0u"s", step=r.dt, length=length(r.I))
 Base.length(r::TESRecord) = length(r.I)
@@ -470,3 +481,4 @@ end
 
 
 end # module
+

@@ -1,5 +1,5 @@
 using Revise
-using ModelTES, Unitful, Test
+using ModelTES, Unitful, Test, PyPlot
 
 # matches Kelsey's low-E pix
 Tc=94.0u"mK"; Tbath = 75.0u"mK"
@@ -31,23 +31,11 @@ bt1(du, unitless.([bt1.T0/1u"K", bt1.I0/1u"A"]), nothing, nothing)
 @test du ≈ [0,0] atol=1e-12
 
 
-
-plot(Float64.(unitless.(ModelTES.times(out)/1u"μs")), ModelTES.unitless.(out.T./out.T[1]), label="T/T0")
-plot(Float64.(unitless.(ModelTES.times(out)/1u"μs")), ModelTES.unitless.(out.I./out.I[1]), label="I/I0")
-plot(Float64.(unitless.(ModelTES.times(out)/1u"μs")), ModelTES.unitless.(out.R./out.R[1]), label="R/R0")
-xlabel("time (μs)")
-ylabel("T (mK)")
-legend()
-ylim(0.,2.5)
-;close("all");
-
-
 Ic0 = 200 * bt1.I0
 rit2 = ModelTES.TwoFluidRIT_from_α(alpha, R0, bt1.T0, bt1.I0, Ic0, Rn, Tc)
 tes_param2 = TESParams(n,Tbath,G,C,L,Rl,Rpara,rit2)
 bt2 = BiasedTES_from_R0(tes_param2, R0)
 
-using PyPlot
 Ts = 90u"mK":.01u"mK":95u"mK"
 R = rit2.(I0, Ts)
 plot(unitless.(Ts./u"mK"), unitless.(R./u"mΩ"))
@@ -64,7 +52,7 @@ println("shank alpha_beta: ", ModelTES.alpha_beta(bt1))
 es = [500, 1000, 2000, 3000, 4000].*1u"eV"
 tpulse = 4000u"μs" 
 arrivals = range(0u"μs", step=tpulse, length=length(es))
-dt = 5u"μs"
+dt = 10u"μs"
 steps = round(Int, ModelTES.unitless((arrivals[end]+tpulse)/dt)) 
 
 out1 = pulses(steps, dt, bt1, es, arrivals, dtsolver=1u"μs")
@@ -80,11 +68,78 @@ title(prod("$e " for e in es))
 ;close("all");
 
 
+using LsqFit, Optim
+
+# LsqFit doesnt like units, so we need an array of TES parameters, and a way to turn those into the neede structues
+
+to_vec(x::BiasedTES) = Float64.(ustrip.([x.p.n, x.p.Tbath, x.p.G, x.p.C, x.p.L, x.p.Rl, x.p.Rp, x.p.RIT.ci, x.p.RIT.Rn, x.p.RIT.Ic0, x.p.RIT.Tc, x.p._K, x.I0, x.T0, x.Vt]))
+function from_vec(x)
+  rit = ModelTES.TwoFluidRIT(x[8], x[9]*1u"mΩ", x[10]*1u"mA", x[11]*1u"mK")
+  p = ModelTES.TESParams(x[1], x[2]*1u"mK", x[3]*1u"pW/K",
+      x[4]*1u"pJ/K", x[5]*1u"nH", x[6]*1u"mΩ", x[7]*1u"mΩ",  rit, x[12])
+  ModelTES.BiasedTES(p, x[13]*1u"mA", x[14]*1u"mK", x[15]*1u"mV")
+end
+function showfields(x, b=true, p="") 
+  # used to write to_vec
+  b && print("[")
+  for (i,fname) in enumerate(fieldnames(typeof(x)))
+    if typeof(getfield(x,fname)) <: Union{ModelTES.TESParams, ModelTES.AbstractRIT}
+      showfields(getfield(x,fname), false, "$p$fname.")
+    else
+      print("x.",p,"$fname, " )
+    end
+  end
+  b && print("]")
+end
+showfields(bt2)
+bt2_vec = to_vec(bt2)
+bt2_copy = from_vec(bt2_vec)
+
+
+steps = 500
+
+# make data with ShankRIT
+out_data = pulses(steps, dt, bt1, es, arrivals, dtsolver=1u"μs")
+ydata = ustrip(out_data.I)
+xdata = Float64.(unitless.(ModelTES.times(out_data)/1u"μs"))
+
+function params_into_bt_vec(bt_vec_in, params)
+  bt_vec = copy(bt_vec_in)
+  bt_vec[8] = params[1] # ci
+  bt_vec[10] = params[2] # Ic0
+  bt_vec[11] = params[3] # Tc
+  bt_vec[13] = params[4] # I0
+  bt_vec[14] = params[5] # T0
+  return bt_vec
+end
+
+function model(x, params, bt_vec_in=bt2_vec)
+  bt_vec = params_into_bt_vec(bt_vec_in, params)
+  bt = from_vec(bt_vec)
+  out = pulses(steps, dt, bt2, es, arrivals, dtsolver=1u"μs")
+  return ustrip(out.I)
+end
+
+params0 = bt2_vec[[8,10,11,13,14]]
+
+result = curve_fit(model, xdata, ydata, params0, lower=params0/2, upper=params0*2)
+ydata_init =  model(nothing, params0)
+ydata_fit = model(xdata, result.param);
+bt_fit = from_vec(params_into_bt_vec(bt2_vec, result.param));
+
+figure()
+plot(xdata, ydata, label="fake data (from shank rit)")
+plot(xdata, ydata_init, lw=2, label="initial guess")
+plot(xdata, ydata_fit, "--", label="fit")
+legend()
+xlabel("time (μs)")
+ylabel("current  (A)")
+
 
 # using ModelTES, ARMA
 # using Test
-using DifferentialEquations
-function get_R(I, T, Tw, A)
+using DifferentialEquations, PyPlot
+function get_R(I, T, Tc, Tw, A, Rn)
   x = (T-Tc+(I/A).^(2/3))/(2*log(2)*Tw)
   R = Rn/2*(1+tanh.(x))
 end
@@ -100,19 +155,25 @@ function f(du, u, p_, t) # use DifferentialEquation 4.0+ API
   Vt = 3.0020392880025883e-8 # V
   Rl = 0.35e-3 # Ω
   L = 50e-9 #H
-  R = get_R(I,T,Tw,A)
+  R = get_R(I, T, Tc, Tw, A, Rn)
   Q=I^2*R-G*(T-T0) # W
   du[1] = Q/C
   du[2] = (Vt-I*(Rl+R))/L
   du
 end
-saveat = 0:1e-6:3e-2
-prob = ODEProblem(f, [91.69122237898571e-3, 0.015085624562827069e-3], (0.0, last(saveat)))
-sol = solve(prob, adaptive=false, dt=1e-7)
-T = sol[1,:]
-I = sol[2,:]
-Rs = get_R.(I, T, 0.6043070792387806, 0.20999635638822695)
-plot(T)
+prob = ODEProblem(f, [91.69122237898571e-3, 0.015085624562827069e-3], 5e-3)
+# notes on the meaning of tolerances
+# the error is constrained to be less than abstol + reltol*value
+# this is different from my intution of min(abstol, reltol*value)
+# it is better for zero crossings.
+# so for TES stuff if we want to solve with currents near the nA range
+sol_adaptive = solve(prob, adaptive=true, dt=1e-7, alg_hints=(:stiff,), abstol=1e-12, reltol=1e-3)
+sol_fixed_dt = solve(prob, adaptive=false, dt=1e-7)
+T = sol_fixed_dt[1,:]
+I = sol_fixed_dt[2,:]
+plot(sol_adaptive.t, sol_adaptive[2,:], label="adaptive")
+plot(sol_fixed_dt.t, sol_fixed_dt[2,:], label="fixed_dt")
+legend()
 # biased_tess = [ModelTES.pholmes(), ModelTES.lowEpix(), ModelTES.highEpix(), ModelTES.LCLSII()]
 
 # for bt in biased_tess
