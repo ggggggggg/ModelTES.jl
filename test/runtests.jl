@@ -110,6 +110,8 @@ function params_into_bt_vec(bt_vec_in, params)
   bt_vec[11] = params[3] # Tc
   bt_vec[13] = params[4] # I0
   bt_vec[14] = params[5] # T0
+  @show params
+  @show bt_vec
   return bt_vec
 end
 
@@ -122,15 +124,20 @@ end
 
 params0 = bt2_vec[[8,10,11,13,14]]
 
-result = curve_fit(model, xdata, ydata, params0, lower=params0/2, upper=params0*2)
+lsqfit = curve_fit(model, xdata, ydata, params0, lower=params0/2, upper=params0*2)
 ydata_init =  model(nothing, params0)
-ydata_fit = model(xdata, result.param);
-bt_fit = from_vec(params_into_bt_vec(bt2_vec, result.param));
+ydata_fit = model(xdata, lsqfit.param);
+bt_fit = from_vec(params_into_bt_vec(bt2_vec, lsqfit.param));
+
+loss = p -> sum((model(nothing, p)).^2)
+@show loss(params0)
+result = optimize(p -> sum((model(nothing, p)).^2), params0, BFGS())
+
 
 figure()
 plot(xdata, ydata, label="fake data (from shank rit)")
 plot(xdata, ydata_init, lw=2, label="initial guess")
-plot(xdata, ydata_fit, "--", label="fit")
+plot(xdata, ydata_fit, "--", label="lsq fit")
 legend()
 xlabel("time (μs)")
 ylabel("current  (A)")
