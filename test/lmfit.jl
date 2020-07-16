@@ -17,6 +17,7 @@ function (p::Param)(;val=nothing, min=nothing, max=nothing, vary=nothing)
     return nothing
 end
 uninit_param(name::String) = Param(name, NaN, -Inf, Inf, true, nothing)
+
 function Base.getindex(q::Vector{Param}, key::String) #emulate an ordered dict
     for v in q
         v.name == key && return v
@@ -45,11 +46,48 @@ struct Result
 end
 (r::Result)(;x=r.x, params=r.params) =  r.model(x=x, params=params)
 
+# add parameter guessing
 struct Model
     name::String
     f
+    n_params::Int
 end
 (m::Model)(;x, params) = m.f(x, values(params)...)
+function make_model(f;name=nothing)
+    params = params_from_function(f) # bit redundant with model_and_params but this shouldn't be in a hot loop
+    if isnothing(name)
+        return Model(string(f), f, length(params))
+    else
+        return Model(name, f, length(params))
+    end
+end
+function model_and_params(f;name=nothing)
+    params = params_from_function(f)
+    return make_model(f,name=name), params
+end
+function get_reduced_fit_function(model::Model, params)
+        (x, p_vary) -> begin
+            p = expand_params(p_vary, params)
+            model.f(x, p...)
+        end    
+end
+
+
+# sketch of a composite model
+struct CompositeModel
+    binary_op
+    m1::Model
+    m2::Model
+end
+(m::CompositeModel)(;x, params) = m.binary_op(m.m1(x=x, params=params), m.m2(x=x, params=params))
+function get_reduced_fit_function(m::CompositeModel, params)
+    (x, p_vary) -> begin
+        p = expand_params(p_vary, params)
+        a = m.m1.f(x, p[1:m.m1.n_params]...)
+        b = m.m2.f(x, p[m.m1.n_params+1:end])
+        m.binary_op(a,b)
+    end
+end
 
 function params_from_function(f)
     ms = methods(f)
@@ -85,14 +123,7 @@ function expand_params(p_vary, params)
     return p_all
 end
 
-function get_reduced_fit_func_function(f, params)
-    (x, p_vary) -> begin
-        p = expand_params(p_vary, params)
-        f(x, p...)
-    end    
-end
-
-function result_from_fit(f, x, init_params, fit)
+function result_from_fit(model, x, init_params, fit)
     params = deepcopy(init_params)
     sigma = LsqFit.stderror(fit)
     i_vary = 0
@@ -103,17 +134,17 @@ function result_from_fit(f, x, init_params, fit)
             p.unc = sigma[i_vary]
         end
     end
-    Result(f, x, init_params, params, fit)
+    Result(model, x, init_params, params, fit)
 end
     
-function fit(f, params; x, y)
+function fit(model, params; x, y)
     validate_params(params)
-    reduced_fit_func = get_reduced_fit_func_function(f, params)
+    reduced_fit_func = get_reduced_fit_function(model, params)
     p0 = [p.val for p in params if p.vary]
     lower = [p.min for p in params if p.vary]
     upper = [p.max for p in params if p.vary]
     fit = LsqFit.curve_fit(reduced_fit_func, x, y, p0, lower=lower, upper=upper)   
-    result_from_fit(f, x, params, fit)
+    result_from_fit(model, x, params, fit)
 end
 
 function validate_params(params)
@@ -132,14 +163,14 @@ if true
 x = 1:100;
 ydata = x.^2.5;
 f(x, a, b) = x.^a.+b
-params = params_from_function(f)
+model, params = model_and_params(f)
 params.b(val = 0, vary = false)
 params.a(val = 3)
 @test [2.5, 0] == expand_params([2.5], params)
-# result = fit(f, params, data)
-reduced_fit_func = get_reduced_fit_func_function(f, params)
-@test ydata == reduced_fit_func(x, [2.5])
+@test model(x=x,params=params) == f(x,params.a.val,params.b.val)
+reduced_fit_func = get_reduced_fit_function(model, params)
+@test reduced_fit_func(x, [2.5]) == ydata # takes a vector of floats for which param varies
 
-result = fit(f, params; x=x, y=ydata)
+result = fit(model, params; x=x, y=ydata)
 
 end

@@ -103,7 +103,7 @@ function fitfunc(x, n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0, T0, Vt)
   out = pulses(steps, dt, bt, es, arrivals, dtsolver=1u"μs")
   return ustrip(out.I)
 end
-params = params_from_function(fitfunc)
+model, params = model_and_params(fitfunc)
 params.Tbath(vary=false)
 params.L(vary=false)
 params.Rn(vary=false)
@@ -114,8 +114,8 @@ copy_fields!(params, bt2)
 
 result = fit(model, params, x=xdata, y=ydata)
 
-ydata_init = evaluate(result, params=result.init_params)
-ydata_fit = evaluate(result)
+ydata_init = result(params=result.init_params)
+ydata_fit = result()
 bt_fit = make_2fluid_biased_tes(values(params)...)
 
 
