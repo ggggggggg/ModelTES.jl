@@ -1,5 +1,5 @@
 using Revise
-using ModelTES, Unitful, Test, PyPlot, DelimitedFiles
+using ModelTES, Unitful, Test, PyPlot, DelimitedFiles, PrettyTables
 Revise.includet("lmfit.jl")
 
 pulse_types = ["FeLa", "CaKa", "PdLa", "SiKa"]
@@ -101,8 +101,8 @@ function fitfunc(x, n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0, T0, Vt, _arb
   arbs = unitless.((out.I.-bt.I0)*arbs_per_current)
   return arbs
 end
-model, params = model_and_params(fitfunc)
-copy_fields!(params, bt2)
+model, params = model_and_params(fitfunc);
+copy_fields!(params, bt2);
 params.n(vary=false, min=3, max=5)
 params.G(vary=true, min=1, max=1000)
 params.Rl(vary=false)
@@ -111,7 +111,7 @@ params.L(vary=true, min=25, max=1e4)
 params.Rn(vary=false)
 params.Rp(vary=false)
 params.Vt(vary=false)
-params.ci(val=0.5, vary=false)
+params.ci(val=0.7, vary=true)
 params._arbs_per_current(val=-351, vary=false)
 
 weights = float.(xdata .< 4000);
@@ -128,3 +128,13 @@ bt_fit = make_2fluid_biased_tes(values(result.params)...)
 ModelTES.alpha_beta(bt_fit)
 ;
 
+function ptable(result)
+pretty_table((name=[p.name for p in result.params],
+vary=[p.vary for p in result.params],
+guess=values(result.init_params),
+value=values(result.params),
+fit_uncertainty=[p.unc==nothing ? NaN : p.unc for p in result.params],
+), 
+formatters = ft_printf("%5.3g", [3,4,5]))
+end
+ptable(result)
