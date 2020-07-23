@@ -43,6 +43,7 @@ struct Result
     init_params::Vector{Param}
     params::Vector{Param}
     fit::LsqFit.LsqFitResult
+    weights::Union{Nothing, Vector{Float64}}
 end
 (r::Result)(;x=r.x, params=r.params) =  r.model(x=x, params=params)
 
@@ -123,7 +124,7 @@ function expand_params(p_vary, params)
     return p_all
 end
 
-function result_from_fit(model, x, init_params, fit)
+function result_from_fit(model, x, init_params, fit, weights)
     params = deepcopy(init_params)
     sigma = LsqFit.stderror(fit)
     i_vary = 0
@@ -134,17 +135,21 @@ function result_from_fit(model, x, init_params, fit)
             p.unc = sigma[i_vary]
         end
     end
-    Result(model, x, init_params, params, fit)
+    Result(model, x, init_params, params, fit, weights)
 end
     
-function fit(model, params; x, y)
+function fit(model, params; x, y, weights=nothing)
     validate_params(params)
     reduced_fit_func = get_reduced_fit_function(model, params)
     p0 = [p.val for p in params if p.vary]
     lower = [p.min for p in params if p.vary]
     upper = [p.max for p in params if p.vary]
-    fit = LsqFit.curve_fit(reduced_fit_func, x, y, p0, lower=lower, upper=upper)   
-    result_from_fit(model, x, params, fit)
+    if weights === nothing
+        fit = LsqFit.curve_fit(reduced_fit_func, x, y, p0, lower=lower, upper=upper) 
+    else
+        fit = LsqFit.curve_fit(reduced_fit_func, x, y, weights, p0, lower=lower, upper=upper) 
+    end
+    result_from_fit(model, x, params, fit, weights)
 end
 
 function validate_params(params)

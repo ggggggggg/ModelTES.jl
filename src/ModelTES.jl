@@ -91,7 +91,7 @@ function initialconditions(p::TESParams, targetR)
         I0 = sqrt(thermalpower(p, T0)/targetR)
         rit(p)(I0,T0)-targetR
     end
-    T00 = fzero(getR0error, Tc-10*Tw, Tc+10*Tw)
+    T00 = fzero(getR0error, p.Tbath, Tc+10*Tw)
     I00 = sqrt(thermalpower(p, T00)/targetR) |> u"nA"
     R00 = rit(p)(I00,T00)
     V00 = I00*(p.Rl+R00)
@@ -113,6 +113,7 @@ end
 "Created a biased tes with quiescent state resistance R0"
 function BiasedTES_from_R0(p::TESParams{RITType}, R0) where RITType
    @assert 0u"Ω" < R0 < normal_resistance(rit(p))
+   @assert transitiontemperature(rit(p)) > p.Tbath
    I0, T0, V = initialconditions(p, R0)
    BiasedTES(p, I0, T0, V)
 end
