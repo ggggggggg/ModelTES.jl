@@ -7,7 +7,7 @@ mutable struct Param
     min::Float64
     max::Float64
     vary::Bool
-    unc::Union{Nothing, Float64}
+    unc::Union{Nothing,Float64}
 end
 function (p::Param)(;val=nothing, min=nothing, max=nothing, vary=nothing)
     isnothing(val)  || (p.val = val)
@@ -18,7 +18,7 @@ function (p::Param)(;val=nothing, min=nothing, max=nothing, vary=nothing)
 end
 uninit_param(name::String) = Param(name, NaN, -Inf, Inf, true, nothing)
 
-function Base.getindex(q::Vector{Param}, key::String) #emulate an ordered dict
+function Base.getindex(q::Vector{Param}, key::String) # emulate an ordered dict
     for v in q
         v.name == key && return v
     end
@@ -43,7 +43,7 @@ struct Result
     init_params::Vector{Param}
     params::Vector{Param}
     fit::LsqFit.LsqFitResult
-    weights::Union{Nothing, Vector{Float64}}
+    weights::Union{Nothing,Vector{Float64}}
 end
 (r::Result)(;x=r.x, params=r.params) =  r.model(x=x, params=params)
 
@@ -64,13 +64,13 @@ function make_model(f;name=nothing)
 end
 function model_and_params(f;name=nothing)
     params = params_from_function(f)
-    return make_model(f,name=name), params
+    return make_model(f, name=name), params
 end
 function get_reduced_fit_function(model::Model, params)
-        (x, p_vary) -> begin
-            p = expand_params(p_vary, params)
-            model.f(x, p...)
-        end    
+    (x, p_vary) -> begin
+        p = expand_params(p_vary, params)
+        model.f(x, p...)
+    end    
 end
 
 
@@ -85,8 +85,8 @@ function get_reduced_fit_function(m::CompositeModel, params)
     (x, p_vary) -> begin
         p = expand_params(p_vary, params)
         a = m.m1.f(x, p[1:m.m1.n_params]...)
-        b = m.m2.f(x, p[m.m1.n_params+1:end])
-        m.binary_op(a,b)
+        b = m.m2.f(x, p[m.m1.n_params + 1:end])
+        m.binary_op(a, b)
     end
 end
 
@@ -113,7 +113,7 @@ function expand_params(p_vary, params)
     i_vary = 0 # index into p_vary
     for (j, param) in enumerate(params)
         if param.vary
-            i_vary+= 1
+            i_vary += 1
             p_all[j] = p_vary[i_vary]
         else
             p_all[j] = param.val
@@ -165,17 +165,17 @@ end
 
 if true
 # test with
-x = 1:100;
-ydata = x.^2.5;
-f(x, a, b) = x.^a.+b
-model, params = model_and_params(f)
-params.b(val = 0, vary = false)
-params.a(val = 3)
-@test [2.5, 0] == expand_params([2.5], params)
-@test model(x=x,params=params) == f(x,params.a.val,params.b.val)
-reduced_fit_func = get_reduced_fit_function(model, params)
-@test reduced_fit_func(x, [2.5]) == ydata # takes a vector of floats for which param varies
+    x = 1:100;
+    ydata = x.^2.5;
+    f(x, a, b) = x.^a .+ b
+    model, params = model_and_params(f)
+    params.b(val=0, vary=false)
+    params.a(val=3)
+    @test [2.5, 0] == expand_params([2.5], params)
+    @test model(x=x, params=params) == f(x, params.a.val, params.b.val)
+    reduced_fit_func = get_reduced_fit_function(model, params)
+    @test reduced_fit_func(x, [2.5]) == ydata # takes a vector of floats for which param varies
 
-result = fit(model, params; x=x, y=ydata)
+    result = fit(model, params; x=x, y=ydata)
 
 end
