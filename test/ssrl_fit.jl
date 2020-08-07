@@ -117,24 +117,26 @@ params._arbs_per_current(val=-351, vary=false)
 weights = float.(xdata .< 4000);
 result = fit(model, params, x=xdata, y=ydata, weights=weights);
 
-figure()
+figure(figsize=(14,6))
 plot(xdata, ydata, label="data")
 plot(xdata, result(x=xdata, params=result.params), label="fit")
 plot(xdata, result(x=xdata, params=result.init_params), label="guess")
 xlabel("time (s)")
 ylabel("signal (arbs)")
 legend()
+plt.tight_layout()
 bt_fit = make_2fluid_biased_tes(values(result.params)...)
 ModelTES.alpha_beta(bt_fit)
 ;
 
 function ptable(result)
 pretty_table((name=[p.name for p in result.params],
+unit=["", "mK", "pW/K", "pJ/K", "nH", "mΩ", "mΩ", "", "mΩ", "mA", "mK", "mA", "mK", "V", "μA^-1"],
 vary=[p.vary for p in result.params],
 guess=values(result.init_params),
 value=values(result.params),
 fit_uncertainty=[p.unc==nothing ? NaN : p.unc for p in result.params],
 ), 
-formatters = ft_printf("%5.3g", [3,4,5]))
+formatters = ft_printf("%5.3g", [3,4,5,6]))
 end
 ptable(result)
