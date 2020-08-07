@@ -107,7 +107,7 @@ function initialconditions(p::TESParams, targetR)
         return I00, T00, V00
     end
 end
-    
+
 
 "Created a biased tes with quiescent state resistance R0"
 function BiasedTES_from_R0(p::TESParams{RITType}, R0) where RITType
@@ -340,6 +340,30 @@ function ShankRIT_from_αβ(alpha, beta, n, Tc, Tbath, G, R0, Rn)
     A = I0 * (2 * alpha / (3 * T0 * beta))^(3 / 2)
     ShankRIT(Tc, Rn, Tw, A)
 end
+
+"""
+Add simple temperature dependence to cr for two fluid model
+"""
+struct TwoFluidLinearCr <: AbstractRIT
+    ci::Float64
+    Rn::typeof(1.0u"mΩ")
+    Ic0::typeof(1.0u"mA")
+    Tc::typeof(1.0u"mK")    
+    cr_min::Float64
+    crΔt::typeof(1.0u"mK")
+end
+    function _resolve_cr_into_two_fluid(tfl::TwoFluidLinearCr, T)
+    Δt = clamp(unitless((tfl.Tc - T) / tfl.crΔt), 0.0, 1.0)
+    cr = 1 - (1 - tfl.cr_min) * Δt
+    tf = TwoFluidRIT(tfl.ci, tfl.Rn * cr, tfl.Ic0, tfl.Tc)    
+end
+function (tfl::TwoFluidLinearCr)(I, T)
+    tf = _resolve_cr_into_two_fluid(tfl, T)
+    tf(I, T)
+end
+transitiontemperature(tfl::TwoFluidLinearCr) = tfl.Tc
+transitionwidth(tfl::TwoFluidLinearCr) = tfl.Tc / 100 # hack to move forward, the correct answer is I0 dependent, maybe define this based on 1 nA?
+normal_resistance(tfl::TwoFluidLinearCr) = tfl.Rn
 
 """
 We follow Bennet and Ullom 2015 equations 33 and 36. 

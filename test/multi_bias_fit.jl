@@ -26,7 +26,7 @@ ylabel("pulse current (uA)")
 #     select some subset of pulses
 #     a corresponding list of rn and energy
 dt_s_no_decimation = times[2] - times[1]
-decimation_factor = 100
+decimation_factor = 10
 n_samples_pulse = ceil(Int, raw_data_n_samples / decimation_factor)
 dt_s = dt_s_no_decimation * decimation_factor
 use_rns = [10, 25, 40]
@@ -79,6 +79,7 @@ bt_test_from_T0 = ModelTES.BiasedTES_from_T0(tes_param2, bt2.T0)
 @assert bt_test_from_T0.I0 ≈ bt2.I0
 bt_test_from_I0 = ModelTES.BiasedTES_from_I0(tes_param2, bt2.I0)
 @assert bt_test_from_I0.T0 ≈ bt2.T0
+linear_cr_rit = ModelTES.TwoFluidLinearCr(rit2.ci, rit2.Rn, rit2.Ic0, rit2.Tc, .1, 5u"mK")
 
 pulse_arrivals_s = [first_pulse_arrival_s + i * dt_s * n_samples_pulse for i in 0:n_energies - 1]
 out = ModelTES.pulses(n_samples_pulse * n_energies, dt_s * 1u"s", bt2, use_energies_ev .* 1u"eV", 
@@ -106,8 +107,8 @@ function copy_fields!(params, x)
 end
 
 # define a fitting model
-function make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0)
-    rit = ModelTES.TwoFluidRIT(ci, Rn * 1u"mΩ", Ic0 * 1u"mA", Tc * 1u"mK")
+function make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, cr_min, crΔT, I0)
+    rit = ModelTES.TwoFluidLinearCr(ci, Rn * 1u"mΩ", Ic0 * 1u"mA", Tc * 1u"mK", cr_min, crΔT * 1u"mK")
     p = ModelTES.TESParams(n, Tbath * 1u"mK", G * 1u"pW/K",
       C * 1u"pJ/K", L * 1u"nH", Rl * 1u"mΩ", Rp * 1u"mΩ",  rit)
     ModelTES.BiasedTES_from_I0(p, I0 * 1u"μA")
@@ -118,7 +119,7 @@ try # allows redefinition of fitfunc more easily
     end
 catch
 end
-function fitfunc(x, n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0_1, I0_2, I0_3, _current_per_arbs)
+function fitfunc(x, n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, cr_min, crΔT, I0_1, I0_2, I0_3, _current_per_arbs)
     # somehow the lower ?bound on the fitter is not being respected, so lets manually enforce it for I0_x
     I0_1 = max(I0_1, 0.0)
     I0_2 = max(I0_2, 0.0)
@@ -128,9 +129,9 @@ function fitfunc(x, n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0_1, I0_2, I0_3
     C = max(C, 0.0)
     n = max(n, 0.0)
     Tc = max(Tc, 0.0)
-    bt_1 = make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0_1)
-    bt_2 = make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0_2)
-    bt_3 = make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, I0_3)
+    bt_1 = make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, cr_min, crΔT, I0_1)
+    bt_2 = make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, cr_min, crΔT, I0_2)
+    bt_3 = make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, cr_min, crΔT, I0_3)
     y = zeros(n_rns * n_energies * n_samples_pulse)
     for (i, bt) in enumerate([bt_1, bt_2, bt_3][1:n_rns])
         for (j, energy_ev) in enumerate(use_energies_ev)
@@ -145,21 +146,23 @@ end
 
 model, params = model_and_params(fitfunc);
 copy_fields!(params, bt2);
-params.n(val=3.4, vary=false, min=3, max=5)
-params.G(val=25, vary=true, min=1, max=1000)
-params.Rl(val=0.38, vary=true, min=1e-3)
-params.Tbath(val=65, vary=false, min=30, max=70)
-params.L(val=110, vary=true, min=25, max=1e4)
-params.Rn(vary=true, min=.1)
-params.Rp(vary=false)
-params.Tc(min=100, vary=false)
-params.C(val=1, min=.1)
-params.ci(val=0.7, min=.1, vary=true)
-params.Ic0(val=1, min=.1)
-params.I0_1(val=pulses_by_rn[use_rns[1]][1,1] * 1e6, min=0, vary=false)
-params.I0_2(val=pulses_by_rn[use_rns[2]][1,1] * 1e6, min=0, vary=false)
-params.I0_3(val=pulses_by_rn[use_rns[3]][1,1] * 1e6, min=0, vary=false)
-params._current_per_arbs(val=1, vary=false)
+params.n(val=3.4, vary=false, min=3, max=5, unit="")
+params.G(val=20, vary=false, min=1, max=1000, unit="pW/K")
+params.C(val=1.4, min=.1, vary=false, unit="pJ/K")
+params.Rl(val=0.38, vary=false, min=1e-3, unit="mΩ")
+params.Tbath(val=65, vary=false, min=30, max=70, unit="mk")
+params.L(val=110, vary=false, min=25, max=1e4, unit="nH")
+params.Rn(vary=false, min=.1, unit="mΩ")
+params.Rp(vary=false, unit="mΩ")
+params.Tc(val=129, min=100, vary=false, unit="mK")
+params.ci(val=0.15, min=.1, vary=false, unit="")
+params.Ic0(val=100, min=90, vary=false, unit="mA")
+params.cr_min(val=.3, vary=false, min=.1, max=1, unit="")
+params.crΔT(val=5, vary=false, min=0, max=10, unit="mK")
+params.I0_1(val=pulses_by_rn[use_rns[1]][1,1] * 1e6, min=0, vary=false, unit="μA")
+params.I0_2(val=pulses_by_rn[use_rns[2]][1,1] * 1e6, min=0, vary=false, unit="μA")
+params.I0_3(val=pulses_by_rn[use_rns[3]][1,1] * 1e6, min=0, vary=false, unit="μA")
+params._current_per_arbs(val=1, vary=false, unit="μA")
 out = model(x=xdata, params=params) # test that we can run the model at all
 ;
 
@@ -168,9 +171,9 @@ result = fit(model, params, x=xdata, y=ydata);
 
 if !isnothing(result)
     figure(figsize=(14, 6))
-    plot(xdata, ydata * 1e6, label="data")
-    plot(xdata, result(x=xdata, params=result.params) * 1e6, label="fit")
-    plot(xdata, result(x=xdata, params=result.init_params) * 1e6, label="guess")
+    plot(xdata, ydata * 1e6, ".", label="data", lw=2)
+    plot(xdata, result(x=xdata, params=result.params) * 1e6, label="fit", lw=2)
+    # plot(xdata, result(x=xdata, params=result.init_params) * 1e6,"--", label="guess")
     xlabel("time (s)")
     ylabel("current (uA)")
     legend()
@@ -180,7 +183,7 @@ end
 
 function ptable(result)
     pretty_table((name = [p.name for p in result.params],
-unit = ["", "mK", "pW/K", "pJ/K", "nH", "mΩ", "mΩ", "", "mΩ", "mA", "mK", "mK", "mK", "mK", "μA"],
+unit = [p.unit for p in result.params],
 vary = [p.vary for p in result.params],
 guess = values(result.init_params),
 value = values(result.params),

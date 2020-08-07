@@ -8,15 +8,17 @@ mutable struct Param
     max::Float64
     vary::Bool
     unc::Union{Nothing,Float64}
+    unit::String
 end
-function (p::Param)(;val=nothing, min=nothing, max=nothing, vary=nothing)
+function (p::Param)(;val=nothing, min=nothing, max=nothing, vary=nothing, unit=nothing)
     isnothing(val)  || (p.val = val)
     isnothing(min)  || (p.min = min)
     isnothing(max)  || (p.max = max)
     isnothing(vary) || (p.vary = vary)
+    isnothing(unit) || (p.unit = unit)
     return nothing
 end
-uninit_param(name::String) = Param(name, NaN, -Inf, Inf, true, nothing)
+uninit_param(name::String) = Param(name, NaN, -Inf, Inf, true, nothing, "?")
 
 function Base.getindex(q::Vector{Param}, key::String) # emulate an ordered dict
     for v in q
