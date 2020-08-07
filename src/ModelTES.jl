@@ -107,7 +107,7 @@ function initialconditions(p::TESParams, targetR)
         return I00, T00, V00
     end
 end
-
+    
 
 "Created a biased tes with quiescent state resistance R0"
 function BiasedTES_from_R0(p::TESParams{RITType}, R0) where RITType
@@ -365,6 +365,48 @@ transitiontemperature(tfl::TwoFluidLinearCr) = tfl.Tc
 transitionwidth(tfl::TwoFluidLinearCr) = tfl.Tc / 100 # hack to move forward, the correct answer is I0 dependent, maybe define this based on 1 nA?
 normal_resistance(tfl::TwoFluidLinearCr) = tfl.Rn
 
+"""
+R(T,I) = Rn*cr(t)*(1-B(T)/I)
+B(T) = B1*(1-T/Tc1)^(3/2) + B2*(1-T/Tc2)^(3/2)
+"""
+struct ChristineModelSimplifiedCr <: AbstractRIT
+    B1::typeof(1.0u"mA")  
+    B2::typeof(1.0u"mA")  
+    Tc1::typeof(1.0u"mK")  
+    Tc2::typeof(1.0u"mK")  
+    Rn::typeof(1.0u"mΩ")
+    cr_a::Float64
+    cr_b::Float64
+    cr_c::Float64
+    cr_a_T::typeof(1.0u"mK")  
+    cr_b_T::typeof(1.0u"mK")
+    cr_c_T::typeof(1.0u"mK")    
+end
+
+transitiontemperature(tfc::ChristineModelSimplifiedCr) = max(tfc.Tc1, tfc.Tc2)
+transitionwidth(tfc::ChristineModelSimplifiedCr) = 10u"mK" # hack to move forward, the correct answer is I0 dependent, maybe define this based on 1 nA?
+normal_resistance(tfc::ChristineModelSimplifiedCr) = tfc.Rn
+
+function (tfc::ChristineModelSimplifiedCr)(I, T)
+    @assert 0.0 <= tfc.cr_a <= tfc.cr_b <= tfc.cr_c <= 1.0
+    @assert tfc.cr_a_T <= tfc.cr_b_T <= tfc.cr_c_T
+    t1 = clamp(unitless(T / tfc.Tc1), 0.0, 1.0)
+    t2 = clamp(unitless(T / tfc.Tc2), 0.0, 1.0)
+    B = tfc.B1 * (1 - t1)^1.5 + tfc.B2 * (1 - t2)^1.5
+    if T <= tfc.cr_a_T
+        cr = tfc.cr_a
+    elseif T <= tfc.cr_b_T
+        t = (T - tfc.cr_a_T) / (tfc.cr_b_T - tfc.cr_a_T)
+        cr = tfc.cr_a + t * (tfc.cr_b - tfc.cr_a)
+    elseif T <= tfc.cr_c_T
+        t = (T - tfc.cr_b_T) / (tfc.cr_c_T - tfc.cr_b_T)
+        cr = tfc.cr_b + t * (tfc.cr_c - tfc.cr_b)
+    else
+        cr = tfc.cr_c      
+    end
+    clamp(cr * tfc.Rn * (1 - B / I) |> u"mΩ", 0.0u"mΩ", tfc.Rn)
+end
+    
 """
 We follow Bennet and Ullom 2015 equations 33 and 36. 
 We notice that `cr` and `Rn` only ever appear as `cr*Rn`, so we define cr=1 and simply

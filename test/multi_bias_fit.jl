@@ -80,6 +80,20 @@ bt_test_from_T0 = ModelTES.BiasedTES_from_T0(tes_param2, bt2.T0)
 bt_test_from_I0 = ModelTES.BiasedTES_from_I0(tes_param2, bt2.I0)
 @assert bt_test_from_I0.T0 ≈ bt2.T0
 linear_cr_rit = ModelTES.TwoFluidLinearCr(rit2.ci, rit2.Rn, rit2.Ic0, rit2.Tc, .1, 5u"mK")
+tfc = ModelTES.ChristineModelSimplifiedCr(.002u"A", 0.010u"A", 129.3u"mK", 128.1u"mK", rit2.Rn, 
+.4, .7, .9, 124.5u"mK", 128.2u"mK", 129.5u"mK")
+tfc(100u"μA", 127u"mK")
+
+figure()
+t = (115:.5:140) .* 1u"mK"
+for i in [50u"μA", 100u"μA", 200u"μA"]
+    r = tfc.(i, t)
+    plot(ustrip.(u"mK", t), ustrip.(u"mΩ", r), label="$i")
+end
+xlabel("temp (mK)")
+ylabel("r (mΩ)")
+legend()
+;
 
 pulse_arrivals_s = [first_pulse_arrival_s + i * dt_s * n_samples_pulse for i in 0:n_energies - 1]
 out = ModelTES.pulses(n_samples_pulse * n_energies, dt_s * 1u"s", bt2, use_energies_ev .* 1u"eV", 
@@ -109,6 +123,8 @@ end
 # define a fitting model
 function make_2fluid_biased_tes(n, Tbath, G, C, L, Rl, Rp, ci, Rn, Ic0, Tc, cr_min, crΔT, I0)
     rit = ModelTES.TwoFluidLinearCr(ci, Rn * 1u"mΩ", Ic0 * 1u"mA", Tc * 1u"mK", cr_min, crΔT * 1u"mK")
+    # ModelTES.ChristineModelSimplifiedCr(.002u"A", 0.010u"A", 129.3u"mK", 128.1u"mK", Rn*1u"mΩ", 
+    # .4, .7, .9, 124.5u"mK", 128.2u"mK", 129.5u"mK")
     p = ModelTES.TESParams(n, Tbath * 1u"mK", G * 1u"pW/K",
       C * 1u"pJ/K", L * 1u"nH", Rl * 1u"mΩ", Rp * 1u"mΩ",  rit)
     ModelTES.BiasedTES_from_I0(p, I0 * 1u"μA")
@@ -147,16 +163,16 @@ end
 model, params = model_and_params(fitfunc);
 copy_fields!(params, bt2);
 params.n(val=3.4, vary=false, min=3, max=5, unit="")
-params.G(val=20, vary=false, min=1, max=1000, unit="pW/K")
-params.C(val=1.4, min=.1, vary=false, unit="pJ/K")
+params.G(val=25, vary=true, min=1, max=1000, unit="pW/K")
+params.C(val=2.1, min=.1, vary=true, unit="pJ/K")
 params.Rl(val=0.38, vary=false, min=1e-3, unit="mΩ")
 params.Tbath(val=65, vary=false, min=30, max=70, unit="mk")
-params.L(val=110, vary=false, min=25, max=1e4, unit="nH")
-params.Rn(vary=false, min=.1, unit="mΩ")
+params.L(val=99, vary=true, min=25, max=1e4, unit="nH")
+params.Rn(vary=true, min=.1, unit="mΩ")
 params.Rp(vary=false, unit="mΩ")
 params.Tc(val=129, min=100, vary=false, unit="mK")
-params.ci(val=0.15, min=.1, vary=false, unit="")
-params.Ic0(val=100, min=90, vary=false, unit="mA")
+params.ci(val=1, min=.1, vary=false, unit="")
+params.Ic0(val=15, min=90, vary=false, unit="mA")
 params.cr_min(val=.3, vary=false, min=.1, max=1, unit="")
 params.crΔT(val=5, vary=false, min=0, max=10, unit="mK")
 params.I0_1(val=pulses_by_rn[use_rns[1]][1,1] * 1e6, min=0, vary=false, unit="μA")
