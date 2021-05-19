@@ -1,6 +1,7 @@
-using Revise
+# using Revise
 using ModelTES, Unitful, Test, PyPlot
-Revise.includet("lmfit.jl")
+# Revise.includet("lmfit.jl")
+include("lmfit.jl")
 # matches Kelsey's low-E pix
 Tc=94.0u"mK"; Tbath = 75.0u"mK"
 R0 = 1.64u"mΩ"; Rl = 0.35u"mΩ"; Rn = 8.2u"mΩ"; Rpara=0.0u"mΩ"
@@ -12,7 +13,10 @@ I0=1.506454430784236e-2u"mA"
 T0= 91.6286322033873u"mK"
 V0=2.9978516417800104e-5u"mV"
 bt0 = BiasedTES(tes_param, I0,T0,V0)
-
+linear_params = ModelTES.getlinearparams(bt0)
+ihtes = ModelTES.IrwinHiltonTES(bt0)
+@show bt0
+@show ihtes
 Teps = 1u"μK"
 @test ModelTES.thermalpower(tes_param._K, n, Tc, Tc+Teps) ≈ G*Teps rtol=1e-2
 

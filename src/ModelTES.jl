@@ -7,8 +7,8 @@ export BiasedTES,
     pulses,
     unitless
 
-using Roots, ForwardDiff, DifferentialEquations, Unitful
-"""assert `x` is unitless and return a Number, eg Float64 or Rational{Int}"""
+using Roots, DifferentialEquations, Unitful
+"""assert `x` is unitless and return `x` as a Number, eg Float64 or Rational{Int}"""
 unitless(x) = uconvert(Unitful.NoUnits, x)
 
 
@@ -66,13 +66,7 @@ function BiasedTES(p, I0, T0, Vt)
 end
 rit(bt::BiasedTES) = rit(bt.p)
 
-function Base.show(io::IO, p::T) where T <: Union{TESParams,AbstractRIT,BiasedTES}
-    print(io, T, "(")
-    for (i, fname) in enumerate(fieldnames(T))
-        print(io, "$fname=", getfield(p, fname), i < fieldcount(T) ? ", " : "")
-    end
-    print(")")
-end
+
 
 
 "Find the initial conditions (I0, T0, V) that cause `p` to have resistance `targetR`."
@@ -252,25 +246,22 @@ getG0(bt::BiasedTES) = bt.p.G
 
 "Calculate paramaters in Irwin-Hilton table 1."
 function getlinearparams(bt::BiasedTES)
-   f(x) = rit(bt)(x[1], x[2])
    p = bt.p
    R0 = getR0(bt)
    G0 = getG0(bt)
-   drdi, drdt = ForwardDiff.gradient(f, [bt.I0, bt.T0])
-   alpha = drdt * bt.T0 / R0
-   beta = drdi * bt.I0 / R0
+   alpha, beta = alpha_beta(bt)
    PJ = bt.I0^2 * R0
-   loopgain = PJ * alpha / G0 / bt.T0
+   loopgain = unitless(PJ * alpha / G0 / bt.T0)
    tauthermal = p.C / G0
    taucc = tauthermal / (1 - loopgain) # constant current time constant
-   r = p.Rl / R0
-   taueff = (1 + beta + r) / (1 + beta + r + (1 - r) * loopgain) # zero inductance effective thermal time constant
+   r = unitless(p.Rl / R0)
+   taueff = tauthermal*(1 + beta + r) / (1 + beta + r + (1 - r) * loopgain) # zero inductance effective thermal time constant
    tauelectrical = p.L / (p.Rl + R0 * (1 + beta))
    invtau = 1 / (2 * tauelectrical) + 1 / (2 * taucc)
    a = (1 / tauelectrical - 1 / taucc)^2
    b = -4 * (R0 / p.L) * loopgain * (2 + beta) / tauthermal
-   lcritical = -p.L * b / a
-   invtaupm = 0.5 * sqrt(a + b + 0 * im) # make it complex, so I can get a complex answer
+   lcritical = -p.L * b / a # what is this?
+   invtaupm = 0.5 * sqrt(complex(a + b)) # make it complex, so I can get a complex answer
    tauplus = 1 / (invtau + invtaupm)
    tauminus = 1 / (invtau - invtaupm)
    c = loopgain * (3 + beta - r) + (1 + beta + r)
@@ -284,29 +275,30 @@ end
 
 "Paramters from Irwin-Hilton table one for modeling a linear TES. Defined in Table 1 of Irwin-Hilton chapter."
 struct IrwinHiltonTES
-   I0::Float64
-   T0::Float64
-   V::Float64
-   Rl::Float64
-   Tl::Float64 # temperature of the load resistor, usually modeled as =Tbath, but really should come from modeling ep coupling in the load resistor
-   Tbath::Float64
-   L::Float64
-   R0::Float64
-   G0::Float64
-   C0::Float64
+   I0::typeof(1.0u"μA")
+   T0::typeof(1.0u"mK")
+   V::typeof(1.0u"μV")
+   Rl::typeof(1.0u"mΩ")
+   Tl::typeof(1.0u"mK") # temperature of the load resistor, usually modeled as =Tbath, but really should come from modeling ep coupling in the load resistor
+   Tbath::typeof(1.0u"mK")
+   L::typeof(1.0u"nH")
+   R0::typeof(1.0u"mΩ")
+   G0::typeof(1.0u"pW/K")
+   C0::typeof(1.0u"pJ/K")
    alpha::Float64
    beta::Float64 # βI
    loopgain::Float64 # ℒI
-   tauthermal::Float64
-   taucc::Float64 # τI
-   taueff::Float64
-   tauelectrical::Float64 # τel
-   tauplus::Complex{Float64}
-   tauminus::Complex{Float64}
-   lcritplus::Float64
-   lcritminus::Float64
-   Lcritical::Float64
+   tauthermal::typeof(1.0u"ms")
+   taucc::typeof(1.0u"ms") # τI
+   taueff::typeof(1.0u"ms")
+   tauelectrical::typeof(1.0u"ms") # τel
+   tauplus::typeof((1.0+im)u"ms")
+   tauminus::typeof((1.0+im)u"ms")
+   lcritplus::typeof(1.0u"nH")
+   lcritminus::typeof(1.0u"nH")
+   Lcritical::typeof(1.0u"nH") # what is this?
 end
+IrwinHiltonTES(bt::BiasedTES) = IrwinHiltonTES(getlinearparams(bt)...)
 
 struct ShankRIT <: AbstractRIT
     Tc::typeof(1.0u"mK")
@@ -449,6 +441,7 @@ end
 
 function alpha_beta(RIT::AbstractRIT, I, T)
     # I used ForwardDiff before switching to unitful, and it doesn't play nice with unitful
+    # instead use finite difference method
     R = RIT(I, T)
     di = I * 1e-6
     dr_i = RIT(I + di, T) - R
@@ -621,6 +614,13 @@ function Base.show(io::IO, r::T) where T <: TESRecord
         print(io, ", T[1]=", r.T[1], ", I[1]=", r.I[1], ", R[1]=", r.R[1])
         end
     print(io, ", dt=", r.dt, ")")
+end
+function Base.show(io::IO, p::T) where T <: Union{TESParams,AbstractRIT,BiasedTES,IrwinHiltonTES}
+    print(io, T, "(")
+    for (i, fname) in enumerate(fieldnames(T))
+        print(io, "$fname=", getfield(p, fname), i < fieldcount(T) ? ", " : "")
+    end
+    print(")")
 end
 
 
